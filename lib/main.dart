@@ -4,110 +4,87 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  runApp(const ProStreamApp());
+  runApp(const UltimateStreamApp());
 }
 
 // ============================================================================
-// GLOBAL STATE
+// DATA MODEL & GLOBAL WATCHLIST
 // ============================================================================
-final ValueNotifier<List<MediaEntry>> globalWatchlist = ValueNotifier([]);
-
-class MediaEntry {
-  final String identifier;
+class MovieMetadata {
+  final int id;
   final String title;
-  final String year;
-  final String description;
+  final String releaseYear;
+  final double rating;
   final String posterUrl;
+  final String description;
+  final String mediaType;
 
-  MediaEntry({
-    required this.identifier,
+  MovieMetadata({
+    required this.id,
     required this.title,
-    required this.year,
-    required this.description,
+    required this.releaseYear,
+    required this.rating,
     required this.posterUrl,
-  });
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is MediaEntry &&
-          runtimeType == other.runtimeType &&
-          identifier == other.identifier;
-
-  @override
-  int get hashCode => identifier.hashCode;
-}
-
-class VideoStream {
-  final String title;
-  final String highQualityUrl;
-  final String standardQualityUrl;
-
-  VideoStream({
-    required this.title,
-    required this.highQualityUrl,
-    required this.standardQualityUrl,
+    required this.description,
+    required this.mediaType,
   });
 }
 
+final ValueNotifier<List<MovieMetadata>> globalWatchlist = ValueNotifier([]);
+
 // ============================================================================
-// MAIN APP
+// MAIN APP NAVIGATION
 // ============================================================================
-class ProStreamApp extends StatelessWidget {
-  const ProStreamApp({super.key});
+class UltimateStreamApp extends StatelessWidget {
+  const UltimateStreamApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Pro Anime & Movies',
+      title: 'Ultimate VOD',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF0B0C10),
+        scaffoldBackgroundColor: const Color(0xFF0D0E12),
         primaryColor: const Color(0xFFE50914),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFFE50914),
-          surface: Color(0xFF16181E),
+          surface: Color(0xFF16181F),
         ),
       ),
-      home: const MainNavigator(),
+      home: const MainTabNavigator(),
     );
   }
 }
 
-class MainNavigator extends StatefulWidget {
-  const MainNavigator({super.key});
+class MainTabNavigator extends StatefulWidget {
+  const MainTabNavigator({super.key});
 
   @override
-  State<MainNavigator> createState() => _MainNavigatorState();
+  State<MainTabNavigator> createState() => _MainTabNavigatorState();
 }
 
-class _MainNavigatorState extends State<MainNavigator> {
-  int _currentIndex = 0;
-  final List<Widget> _screens = [
-    const AutoCatalogScreen(),
-    const WatchlistScreen(),
-  ];
+class _MainTabNavigatorState extends State<MainTabNavigator> {
+  int _tab = 0;
+  final List<Widget> _screens = [const CatalogScreen(), const WatchlistScreen()];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+      body: IndexedStack(index: _tab, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: const Color(0xFF16181E),
+        backgroundColor: const Color(0xFF16181F),
         selectedItemColor: const Color(0xFFE50914),
         unselectedItemColor: Colors.white54,
-        currentIndex: _currentIndex,
-        onTap: (index) => setState(() => _currentIndex = index),
+        currentIndex: _tab,
+        onTap: (i) => setState(() => _tab = i),
         items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.movie_filter), label: 'Discover'),
-          BottomNavigationBarItem(icon: Icon(Icons.bookmark), label: 'Watchlist'),
+          BottomNavigationBarItem(icon: Icon(Icons.movie_creation_outlined), label: 'Discover'),
+          BottomNavigationBarItem(icon: Icon(Icons.bookmark_border), label: 'Watchlist'),
         ],
       ),
     );
@@ -115,73 +92,96 @@ class _MainNavigatorState extends State<MainNavigator> {
 }
 
 // ============================================================================
-// DISCOVER TAB
+// DISCOVER TAB (TMDb METADATA SEARCH)
 // ============================================================================
-class AutoCatalogScreen extends StatefulWidget {
-  const AutoCatalogScreen({super.key});
+class CatalogScreen extends StatefulWidget {
+  const CatalogScreen({super.key});
 
   @override
-  State<AutoCatalogScreen> createState() => _AutoCatalogScreenState();
+  State<CatalogScreen> createState() => _CatalogScreenState();
 }
 
-class _AutoCatalogScreenState extends State<AutoCatalogScreen> {
+class _CatalogScreenState extends State<CatalogScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
-  List<MediaEntry> _results = [];
+  List<MovieMetadata> _movies = [];
   bool _isLoading = false;
   Timer? _debounce;
 
-  Future<void> _executeAutoSearch(String query) async {
+  // Insert real TMDb API key to fetch millions of live titles
+  final String _tmdbApiKey = "YOUR_TMDB_API_KEY_HERE";
+
+  Future<void> _searchTitles(String query) async {
     final clean = query.trim();
     if (clean.isEmpty) {
-      setState(() => _results = []);
+      setState(() => _movies = []);
       return;
     }
+
     setState(() => _isLoading = true);
 
     try {
-      final advancedQuery = 
-          '${Uri.encodeComponent(clean)}+AND+mediatype:movies+AND+(collection:animationandcartoons+OR+collection:feature_films+OR+collection:sci-fi)';
-      
-      final uri = Uri.parse(
-        'https://archive.org/advancedsearch.php?q=$advancedQuery&fl[]=identifier,title,description,year&rows=30&output=json',
-      );
-
-      final response = await http.get(uri).timeout(const Duration(seconds: 8));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final List docs = data['response']['docs'] ?? [];
-
-        final List<MediaEntry> parsed = docs.map((doc) {
-          final id = doc['identifier']?.toString() ?? '';
-          return MediaEntry(
-            identifier: id,
-            title: doc['title']?.toString() ?? 'Unknown Title',
-            year: doc['year']?.toString() ?? '',
-            description: doc['description']?.toString() ?? 'No description available.',
-            posterUrl: 'https://archive.org/services/img/$id',
-          );
-        }).toList();
-
-        if (mounted) setState(() => _results = parsed);
+      if (_tmdbApiKey != "YOUR_TMDB_API_KEY_HERE") {
+        final uri = Uri.parse('https://api.themoviedb.org/3/search/multi?api_key=$_tmdbApiKey&query=${Uri.encodeComponent(clean)}&include_adult=false');
+        final res = await http.get(uri).timeout(const Duration(seconds: 8));
+        if (res.statusCode == 200) {
+          final data = json.decode(res.body);
+          final List results = data['results'] ?? [];
+          final List<MovieMetadata> items = [];
+          
+          for (final doc in results) {
+            final type = doc['media_type'] ?? 'movie';
+            if (type != 'movie' && type != 'tv') continue;
+            
+            final title = doc['title'] ?? doc['name'] ?? 'Untitled';
+            final date = doc['release_date'] ?? doc['first_air_date'] ?? '';
+            final posterPath = doc['poster_path'];
+            
+            items.add(MovieMetadata(
+              id: doc['id'],
+              title: title,
+              releaseYear: date.length >= 4 ? date.substring(0, 4) : 'N/A',
+              rating: (doc['vote_average'] as num?)?.toDouble() ?? 0.0,
+              posterUrl: posterPath != null ? 'https://image.tmdb.org/t/p/w500$posterPath' : 'https://via.placeholder.com/400x600/16181F/FFFFFF?text=No+Poster',
+              description: doc['overview'] ?? 'No overview available.',
+              mediaType: type,
+            ));
+          }
+          if (mounted) setState(() => _movies = items);
+        }
+      } else {
+        // DEMO FALLBACK: Shows exactly how a real API populates data
+        await Future.delayed(const Duration(milliseconds: 500));
+        setState(() {
+          _movies = [
+            MovieMetadata(
+              id: 872585, title: 'Oppenheimer', releaseYear: '2023', rating: 8.9,
+              posterUrl: 'https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg',
+              description: 'The story of J. Robert Oppenheimer’s role in the development of the atomic bomb.', mediaType: 'movie',
+            ),
+            MovieMetadata(
+              id: 37854, title: 'One Piece', releaseYear: '1999', rating: 8.9,
+              posterUrl: 'https://image.tmdb.org/t/p/w500/fcXdJUSDiDiFupuDuKFfuP2JEz5.jpg',
+              description: 'Monkey D. Luffy sets out to sea to become the Pirate King.', mediaType: 'tv',
+            ),
+            MovieMetadata(
+              id: 94605, title: 'Arcane', releaseYear: '2021', rating: 9.0,
+              posterUrl: 'https://image.tmdb.org/t/p/w500/fqldf2t8ztc9aiwn397FvFeNz9H.jpg',
+              description: 'Amid the conflict between the twin cities, two sisters fight on rival sides.', mediaType: 'tv',
+            ),
+          ].where((m) => m.title.toLowerCase().contains(clean.toLowerCase())).toList();
+        });
       }
-    } catch (e) {
-      debugPrint('Search error: $e');
-    }
-    if (mounted) setState(() => _isLoading = false);
-  }
+    } catch (_) {}
 
-  void _onSearchChanged(String val) {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 700), () => _executeAutoSearch(val));
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF16181E),
-        title: const Text('Movies & Anime', style: TextStyle(fontSize: 18)),
+        backgroundColor: const Color(0xFF16181F),
+        title: const Text('Cinematic Library', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
       ),
       body: Column(
         children: [
@@ -189,21 +189,76 @@ class _AutoCatalogScreenState extends State<AutoCatalogScreen> {
             padding: const EdgeInsets.all(12),
             child: TextField(
               controller: _searchCtrl,
-              onChanged: _onSearchChanged,
+              onChanged: (val) {
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 500), () => _searchTitles(val));
+              },
               decoration: InputDecoration(
-                hintText: 'Search movies, anime...',
+                hintText: 'Search Oppenheimer, Anime, Shows...',
                 prefixIcon: const Icon(Icons.search, color: Color(0xFFE50914)),
                 filled: true,
-                fillColor: const Color(0xFF16181E),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide.none,
-                ),
+                fillColor: const Color(0xFF16181F),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
               ),
             ),
           ),
           if (_isLoading) const LinearProgressIndicator(color: Color(0xFFE50914), minHeight: 2),
-          Expanded(child: MediaGrid(mediaList: _results, emptyMessage: 'Search for cinematic content...')),
+          Expanded(
+            child: GridView.builder(
+              padding: const EdgeInsets.all(12),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 2, childAspectRatio: 0.62, crossAxisSpacing: 12, mainAxisSpacing: 12,
+              ),
+              itemCount: _movies.length,
+              itemBuilder: (ctx, i) {
+                final movie = _movies[i];
+                return GestureDetector(
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UltimatePlayerScreen(movie: movie))),
+                  child: Container(
+                    decoration: BoxDecoration(color: const Color(0xFF16181F), borderRadius: BorderRadius.circular(10)),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Stack(
+                            children: [
+                              Image.network(movie.posterUrl, fit: BoxFit.cover, width: double.infinity, height: double.infinity),
+                              Positioned(
+                                top: 6, right: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(color: Colors.black.withOpacity(0.8), borderRadius: BorderRadius.circular(4)),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.star, color: Colors.amber, size: 12),
+                                      const SizedBox(width: 3),
+                                      Text(movie.rating > 0 ? movie.rating.toStringAsFixed(1) : 'NR', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(movie.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              const SizedBox(height: 3),
+                              Text('${movie.releaseYear} • ${movie.mediaType.toUpperCase()}', style: const TextStyle(color: Colors.white54, fontSize: 11)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
         ],
       ),
     );
@@ -211,7 +266,7 @@ class _AutoCatalogScreenState extends State<AutoCatalogScreen> {
 }
 
 // ============================================================================
-// WATCHLIST TAB
+// WATCHLIST VIEW
 // ============================================================================
 class WatchlistScreen extends StatelessWidget {
   const WatchlistScreen({super.key});
@@ -220,15 +275,25 @@ class WatchlistScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF16181E),
-        title: const Text('My Watchlist', style: TextStyle(fontSize: 18)),
+        backgroundColor: const Color(0xFF16181F),
+        title: const Text('My Watchlist', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      body: ValueListenableBuilder<List<MediaEntry>>(
+      body: ValueListenableBuilder<List<MovieMetadata>>(
         valueListenable: globalWatchlist,
-        builder: (context, watchlist, child) {
-          return MediaGrid(
-            mediaList: watchlist,
-            emptyMessage: 'Your watchlist is empty.',
+        builder: (context, list, _) {
+          if (list.isEmpty) return const Center(child: Text('Your watchlist is empty.', style: TextStyle(color: Colors.white54)));
+          return ListView.builder(
+            itemCount: list.length,
+            itemBuilder: (ctx, i) {
+              final item = list[i];
+              return ListTile(
+                leading: Image.network(item.posterUrl, width: 40, fit: BoxFit.cover),
+                title: Text(item.title),
+                subtitle: Text('${item.releaseYear} • Rating: ★ ${item.rating}'),
+                trailing: const Icon(Icons.play_arrow, color: Color(0xFFE50914)),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => UltimatePlayerScreen(movie: item))),
+              );
+            },
           );
         },
       ),
@@ -236,215 +301,84 @@ class WatchlistScreen extends StatelessWidget {
   }
 }
 
-class MediaGrid extends StatelessWidget {
-  final List<MediaEntry> mediaList;
-  final String emptyMessage;
-
-  const MediaGrid({super.key, required this.mediaList, required this.emptyMessage});
+// ============================================================================
+// ULTIMATE STREAM PLAYER (YouTube Extraction + Gestures + Settings)
+// ============================================================================
+class UltimatePlayerScreen extends StatefulWidget {
+  final MovieMetadata movie;
+  const UltimatePlayerScreen({super.key, required this.movie});
 
   @override
-  Widget build(BuildContext context) {
-    if (mediaList.isEmpty) return Center(child: Text(emptyMessage, style: const TextStyle(color: Colors.white54)));
-    
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        childAspectRatio: 0.65,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: mediaList.length,
-      itemBuilder: (context, idx) {
-        final item = mediaList[idx];
-        return GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => AutoPlayerScreen(media: item)),
-          ).then((_) {
-            SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-          }),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFF16181E),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Image.network(
-                    item.posterUrl,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    errorBuilder: (_, __, ___) => const ColoredBox(
-                      color: Colors.black26,
-                      child: Icon(Icons.movie, size: 40),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: Text(
-                    item.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
+  State<UltimatePlayerScreen> createState() => _UltimatePlayerScreenState();
 }
 
-// ============================================================================
-// ULTIMATE ADVANCED PLAYER
-// ============================================================================
-class AutoPlayerScreen extends StatefulWidget {
-  final MediaEntry media;
-  const AutoPlayerScreen({super.key, required this.media});
-
-  @override
-  State<AutoPlayerScreen> createState() => _AutoPlayerScreenState();
-}
-
-class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
+class _UltimatePlayerScreenState extends State<UltimatePlayerScreen> {
   VideoPlayerController? _controller;
-  bool _isResolving = true;
-  String? _statusMessage;
-  
-  List<VideoStream> _episodes = [];
-  int _currentEpisodeIndex = 0;
-  
-  // App States
-  bool _isHighQuality = true;
-  String _selectedLanguage = 'English'; 
-  bool _showSubtitles = true; 
-  BoxFit _aspectRatio = BoxFit.contain;
-  
+  bool _isInit = false;
+  String _statusMessage = "Connecting to streaming servers...";
+
+  // Gestures & Playback
+  double _volume = 1.0;
+  double _brightness = 1.0;
+  bool _isDragging = false;
+  String _dragLabel = "";
+  double _dragValue = 0.0;
+  bool _isLeftHalf = false;
+
   bool _isFullscreen = false;
   bool _showControls = true;
   Timer? _hideControlsTimer;
 
-  // Gesture Controls (Volume & Brightness)
-  double _volume = 1.0;
-  double _brightness = 1.0; 
-  bool _isDragging = false;
-  String _dragLabel = "";
-  double _dragPercentage = 0.0;
-  bool _isLeftHalf = false;
+  // Advanced Settings
+  bool _isMirrored = false;
+  BoxFit _aspectRatio = BoxFit.contain;
+  bool _showSubtitles = true;
+  String _selectedLang = 'English';
 
   @override
   void initState() {
     super.initState();
-    _fetchEpisodesAndPlay();
+    _extractAndPlay();
   }
 
-  Future<void> _fetchEpisodesAndPlay() async {
-    setState(() {
-      _isResolving = true;
-      _statusMessage = 'Fetching episodes...';
-    });
-
+  // ------------------------------------------------------------------------
+  // THE MAGIC: Silent YouTube Search & MP4 Extraction
+  // ------------------------------------------------------------------------
+  Future<void> _extractAndPlay() async {
+    final yt = YoutubeExplode();
     try {
-      final metaUri = Uri.parse('https://archive.org/metadata/${widget.media.identifier}');
-      final response = await http.get(metaUri).timeout(const Duration(seconds: 10));
+      // 1. Search YouTube for the video (Appending 'trailer' ensures we get a safe MP4 file to test playback)
+      final query = '${widget.movie.title} official trailer';
+      setState(() => _statusMessage = 'Searching streams for "$query"...');
+      
+      final searchResults = await yt.search.search(query);
+      if (searchResults.isEmpty) throw Exception("No streams found");
+      final videoId = searchResults.first.id;
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final List files = data['files'] ?? [];
-
-        Map<String, String> originalFiles = {};
-        Map<String, String> sdFiles = {};
-
-        for (final f in files) {
-          final name = (f['name'] ?? '').toString();
-          if (!name.endsWith('.mp4')) continue;
-          final source = f['source'] ?? '';
-          if (source == 'original') {
-            originalFiles[name] = name;
-          } else if (source == 'derivative' || name.contains('512kb')) {
-            String cleanName = name.replaceAll('_512kb', '');
-            sdFiles[cleanName] = name;
-          }
-        }
-
-        List<VideoStream> parsedEpisodes = [];
-        originalFiles.forEach((cleanName, originalName) {
-          final baseUrl = 'https://archive.org/download/${widget.media.identifier}/';
-          parsedEpisodes.add(VideoStream(
-            title: cleanName.replaceAll('.mp4', ''),
-            highQualityUrl: baseUrl + originalName,
-            standardQualityUrl: sdFiles.containsKey(cleanName) ? baseUrl + sdFiles[cleanName]! : baseUrl + originalName,
-          ));
-        });
-
-        if (parsedEpisodes.isNotEmpty) {
-          setState(() {
-            _episodes = parsedEpisodes;
-            _currentEpisodeIndex = 0;
-          });
-          await _initializePlayer();
-          return;
-        }
-      }
-      throw Exception('No valid MP4 formats found.');
-    } catch (e) {
-      if (mounted) setState(() => _statusMessage = 'Playback failed: $e');
-    }
-  }
-
-  Future<void> _initializePlayer({Duration? seekTo}) async {
-    final oldController = _controller;
-    final currentEpisode = _episodes[_currentEpisodeIndex];
-    final url = _isHighQuality ? currentEpisode.highQualityUrl : currentEpisode.standardQualityUrl;
-
-    setState(() {
-      _isResolving = true;
-      _statusMessage = 'Buffering...';
-    });
-
-    final newController = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      httpHeaders: {'User-Agent': 'Mozilla/5.0 (Android; Mobile)'},
-    );
-
-    try {
-      await newController.initialize();
-      newController.setVolume(_volume);
-      if (seekTo != null) await newController.seekTo(seekTo);
-      await newController.play();
-
+      // 2. Extract the hidden MP4 Manifest
+      setState(() => _statusMessage = 'Extracting secure stream manifest...');
+      final manifest = await yt.videos.streamsClient.getManifest(videoId);
+      final streamInfo = manifest.muxed.withHighestVideoQuality();
+      
+      // 3. Mount the raw MP4 into the Flutter Native Player
+      setState(() => _statusMessage = 'Buffering high-speed stream...');
+      _controller = VideoPlayerController.networkUrl(Uri.parse(streamInfo.url.toString()));
+      
+      await _controller!.initialize();
+      await _controller!.play();
+      
       if (mounted) {
-        setState(() {
-          _controller = newController;
-          _isResolving = false;
-        });
+        setState(() => _isInit = true);
         _startHideControlsTimer();
       }
-      await oldController?.dispose();
     } catch (e) {
-      if (mounted) setState(() => _statusMessage = 'Video Load Error');
+      if (mounted) setState(() => _statusMessage = 'Stream blocked or unavailable. Error: $e');
+    } finally {
+      yt.close();
     }
   }
 
   // --- PLAYER CONTROLS ---
-  void _toggleFullscreen() {
-    setState(() => _isFullscreen = !_isFullscreen);
-    if (_isFullscreen) {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeRight, DeviceOrientation.landscapeLeft]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    } else {
-      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-    }
-  }
-
   void _startHideControlsTimer() {
     _hideControlsTimer?.cancel();
     setState(() => _showControls = true);
@@ -458,18 +392,12 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
   void _togglePlayPause() {
     if (_controller == null) return;
     setState(() {
-      if (_controller!.value.isPlaying) {
-        _controller!.pause();
-        _showControls = true;
-        _hideControlsTimer?.cancel();
-      } else {
-        _controller!.play();
-        _startHideControlsTimer();
-      }
+      _controller!.value.isPlaying ? _controller!.pause() : _controller!.play();
     });
+    _startHideControlsTimer();
   }
 
-  void _skipForward(int seconds) async {
+  void _skip(int seconds) async {
     if (_controller == null) return;
     final pos = await _controller!.position;
     if (pos != null) {
@@ -478,89 +406,106 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
     }
   }
 
+  void _toggleFullscreen() {
+    setState(() => _isFullscreen = !_isFullscreen);
+    if (_isFullscreen) {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeRight, DeviceOrientation.landscapeLeft]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else {
+      SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    }
+  }
+
+  String _formatTime(Duration d) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final h = d.inHours;
+    final m = twoDigits(d.inMinutes.remainder(60));
+    final s = twoDigits(d.inSeconds.remainder(60));
+    return h > 0 ? '${twoDigits(h)}:$m:$s' : '$m:$s';
+  }
+
   // --- SETTINGS SHEET ---
   void _showSettingsSheet() {
     _hideControlsTimer?.cancel();
     showModalBottomSheet(
       context: context,
-      backgroundColor: const Color(0xFF16181E),
+      backgroundColor: const Color(0xFF16181F),
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(15))),
-      builder: (context) {
+      builder: (ctx) {
         return StatefulBuilder(
           builder: (BuildContext context, StateSetter setModalState) {
-            return Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Player Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const Divider(color: Colors.white24, height: 30),
-                  
-                  const Text('Subtitles & Audio', style: TextStyle(color: Color(0xFFE50914))),
-                  SwitchListTile(
-                    title: const Text('English Subtitles'),
-                    value: _showSubtitles,
-                    activeColor: const Color(0xFFE50914),
-                    onChanged: (val) {
-                      setState(() => _showSubtitles = val);
-                      setModalState((){});
-                    },
-                  ),
-                  ListTile(
-                    title: const Text('Audio Language'),
-                    subtitle: Text(_selectedLanguage, style: const TextStyle(color: Colors.white54)),
-                    trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-                    onTap: () {
-                      setState(() => _selectedLanguage = _selectedLanguage == 'English' ? 'Hindi' : 'English');
-                      setModalState((){});
-                    },
-                  ),
-                  const Divider(color: Colors.white24, height: 20),
-                  
-                  const Text('Video Quality', style: TextStyle(color: Color(0xFFE50914))),
-                  ListTile(
-                    title: const Text('1080p / High'),
-                    trailing: _isHighQuality ? const Icon(Icons.check, color: Color(0xFF00E676)) : null,
-                    onTap: () async {
-                      Navigator.pop(context);
-                      if (!_isHighQuality) {
-                        _isHighQuality = true;
-                        final pos = await _controller?.position;
-                        _initializePlayer(seekTo: pos);
-                      }
-                    },
-                  ),
-                  ListTile(
-                    title: const Text('480p / Standard'),
-                    trailing: !_isHighQuality ? const Icon(Icons.check, color: Color(0xFF00E676)) : null,
-                    onTap: () async {
-                      Navigator.pop(context);
-                      if (_isHighQuality) {
-                        _isHighQuality = false;
-                        final pos = await _controller?.position;
-                        _initializePlayer(seekTo: pos);
-                      }
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                ],
+            return SafeArea(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Player Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const Divider(color: Colors.white24, height: 30),
+                    
+                    // MIRROR FIX UPGRADE
+                    SwitchListTile(
+                      title: const Text('Fix Mirrored Video'),
+                      subtitle: const Text('Flips horizontally bypassed uploads', style: TextStyle(color: Colors.white54, fontSize: 11)),
+                      value: _isMirrored,
+                      activeColor: const Color(0xFFE50914),
+                      onChanged: (val) {
+                        setState(() => _isMirrored = val);
+                        setModalState((){});
+                      },
+                    ),
+
+                    // ASPECT RATIO UPGRADE
+                    const SizedBox(height: 10),
+                    const Text('Aspect Ratio', style: TextStyle(color: Color(0xFFE50914))),
+                    Wrap(
+                      spacing: 10,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Fit'), selected: _aspectRatio == BoxFit.contain,
+                          selectedColor: const Color(0xFFE50914),
+                          onSelected: (v) { setState(() => _aspectRatio = BoxFit.contain); setModalState((){}); },
+                        ),
+                        ChoiceChip(
+                          label: const Text('Stretch'), selected: _aspectRatio == BoxFit.fill,
+                          selectedColor: const Color(0xFFE50914),
+                          onSelected: (v) { setState(() => _aspectRatio = BoxFit.fill); setModalState((){}); },
+                        ),
+                        ChoiceChip(
+                          label: const Text('Zoom'), selected: _aspectRatio == BoxFit.cover,
+                          selectedColor: const Color(0xFFE50914),
+                          onSelected: (v) { setState(() => _aspectRatio = BoxFit.cover); setModalState((){}); },
+                        ),
+                      ],
+                    ),
+                    const Divider(color: Colors.white24, height: 30),
+
+                    // SUBTITLE & DUB MOCK
+                    SwitchListTile(
+                      title: const Text('Show Subtitles'),
+                      value: _showSubtitles,
+                      activeColor: const Color(0xFFE50914),
+                      onChanged: (val) { setState(() => _showSubtitles = val); setModalState((){}); },
+                    ),
+                    ListTile(
+                      title: const Text('Audio Language'),
+                      trailing: Text(_selectedLang, style: const TextStyle(color: Color(0xFFE50914))),
+                      onTap: () {
+                        setState(() => _selectedLang = _selectedLang == 'English' ? 'Hindi' : 'English');
+                        setModalState((){});
+                      },
+                    ),
+                  ],
+                ),
               ),
             );
           }
         );
       },
     ).then((_) => _startHideControlsTimer());
-  }
-
-  // --- TIME FORMATTER ---
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final hours = twoDigits(duration.inHours);
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    return duration.inHours > 0 ? "$hours:$minutes:$seconds" : "$minutes:$seconds";
   }
 
   @override
@@ -574,91 +519,72 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final inWatchlist = globalWatchlist.value.contains(widget.media);
+    final inWatchlist = globalWatchlist.value.contains(widget.movie);
 
     Widget playerUI = Container(
       color: Colors.black,
-      child: _controller != null && _controller!.value.isInitialized
+      child: _isInit && _controller != null
           ? GestureDetector(
               onTap: () {
-                if (_showControls) {
-                  setState(() => _showControls = false);
-                } else {
-                  _startHideControlsTimer();
-                }
+                _showControls ? setState(() => _showControls = false) : _startHideControlsTimer();
               },
-              // Vertical Drag for Volume and Brightness
+              // GESTURES: Brightness & Volume
               onVerticalDragStart: (details) {
-                final screenWidth = MediaQuery.of(context).size.width;
-                _isLeftHalf = details.localPosition.dx < screenWidth / 2;
+                _isLeftHalf = details.localPosition.dx < MediaQuery.of(context).size.width / 2;
                 setState(() => _isDragging = true);
-                _hideControlsTimer?.cancel(); // keep controls hidden or visible while dragging
               },
               onVerticalDragUpdate: (details) {
-                // Moving UP is negative delta. So subtracting negative increases value.
-                double delta = -details.primaryDelta! / 200; 
+                double delta = -details.primaryDelta! / 200;
                 setState(() {
                   if (_isLeftHalf) {
                     _volume = (_volume + delta).clamp(0.0, 1.0);
                     _controller!.setVolume(_volume);
-                    _dragLabel = "Volume";
-                    _dragPercentage = _volume;
+                    _dragLabel = "Volume"; _dragValue = _volume;
                   } else {
                     _brightness = (_brightness + delta).clamp(0.0, 1.0);
-                    _dragLabel = "Brightness";
-                    _dragPercentage = _brightness;
+                    _dragLabel = "Brightness"; _dragValue = _brightness;
                   }
                 });
               },
-              onVerticalDragEnd: (details) {
-                setState(() => _isDragging = false);
-                _startHideControlsTimer();
-              },
+              onVerticalDragEnd: (_) => setState(() => _isDragging = false),
               child: Stack(
                 children: [
-                  // 1. VIDEO LAYER
+                  // 1. VIDEO LAYER WITH ASPECT RATIO AND MIRROR FIX
                   SizedBox.expand(
                     child: FittedBox(
                       fit: _aspectRatio,
                       child: SizedBox(
-                        width: _controller!.value.size.width,
-                        height: _controller!.value.size.height,
-                        child: VideoPlayer(_controller!),
+                        width: _controller!.value.size.width, height: _controller!.value.size.height,
+                        child: Transform.flip(
+                          flipX: _isMirrored,
+                          child: VideoPlayer(_controller!),
+                        ),
                       ),
                     ),
                   ),
 
-                  // 2. BRIGHTNESS OVERLAY (Clever Trick: Black box with variable opacity)
+                  // 2. BRIGHTNESS OVERLAY TRICK
                   IgnorePointer(
-                    child: Container(
-                      color: Colors.black.withOpacity(1.0 - _brightness),
-                    ),
+                    child: Container(color: Colors.black.withOpacity(1.0 - _brightness)),
                   ),
 
-                  // 3. SUBTITLES (Architecture Example)
+                  // 3. SUBTITLE RENDERER
                   if (_showSubtitles)
                     Positioned(
-                      bottom: _isFullscreen ? 70 : 50,
-                      left: 20, right: 20,
+                      bottom: _isFullscreen ? 70 : 50, left: 20, right: 20,
                       child: ValueListenableBuilder(
                         valueListenable: _controller!,
-                        builder: (context, VideoPlayerValue value, child) {
-                          // Simulating dynamic subtitles based on time
-                          bool show = value.position.inSeconds % 5 < 3; 
+                        builder: (ctx, VideoPlayerValue val, _) {
+                          bool show = val.position.inSeconds % 6 < 4; // Mock logic
                           return show ? Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            color: Colors.black54,
-                            child: const Text(
-                              "[English Subtitles On]\nSimulated dialogue processing...", 
-                              textAlign: TextAlign.center, 
-                              style: TextStyle(color: Colors.white, fontSize: 14)
-                            ),
+                            padding: const EdgeInsets.all(8), color: Colors.black54,
+                            child: const Text("[English Subtitles]\nPlaying extracted stream...", textAlign: TextAlign.center, style: TextStyle(color: Colors.white)),
                           ) : const SizedBox.shrink();
                         },
                       ),
                     ),
-                  
-                  // 4. GESTURE FEEDBACK OVERLAY (Volume/Brightness Icon)
+
+                  // 4. GESTURE FEEDBACK WIDGET
                   if (_isDragging)
                     Center(
                       child: Container(
@@ -667,12 +593,9 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              _isLeftHalf ? Icons.volume_up : Icons.brightness_6, 
-                              color: Colors.white, size: 36
-                            ),
+                            Icon(_isLeftHalf ? Icons.volume_up : Icons.brightness_6, color: Colors.white, size: 36),
                             const SizedBox(height: 8),
-                            Text('${(_dragPercentage * 100).toInt()}%', style: const TextStyle(fontSize: 16)),
+                            Text('${(_dragValue * 100).toInt()}%', style: const TextStyle(fontSize: 16, color: Colors.white)),
                           ],
                         ),
                       ),
@@ -680,93 +603,58 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
 
                   // 5. CONTROLS OVERLAY
                   if (_showControls && !_isDragging) ...[
-                    Container(
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topCenter, end: Alignment.bottomCenter,
-                          colors: [Colors.black54, Colors.transparent, Colors.black87],
-                          stops: [0.0, 0.5, 1.0],
-                        ),
-                      ),
-                    ),
+                    Container(decoration: const BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.black54, Colors.transparent, Colors.black87], stops: [0.0, 0.5, 1.0]))),
                     
                     Positioned(
                       top: 10, right: 10,
                       child: SafeArea(
-                        child: IconButton(
-                          icon: const Icon(Icons.settings, color: Colors.white, size: 28),
-                          onPressed: _showSettingsSheet,
-                        ),
+                        child: IconButton(icon: const Icon(Icons.settings, color: Colors.white, size: 28), onPressed: _showSettingsSheet),
                       ),
                     ),
 
-                    // CENTER SKIP / PLAY ROW
+                    // CENTER 10s SKIP & PLAY BUTTONS
                     Center(
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          IconButton(
-                            iconSize: 42,
-                            icon: const Icon(Icons.replay_10, color: Colors.white),
-                            onPressed: () => _skipForward(-10),
-                          ),
+                          IconButton(iconSize: 42, icon: const Icon(Icons.replay_10, color: Colors.white), onPressed: () => _skip(-10)),
                           const SizedBox(width: 20),
                           IconButton(
                             iconSize: 64,
-                            icon: Icon(
-                              _controller!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                              color: Colors.white,
-                            ),
+                            icon: Icon(_controller!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled, color: Colors.white),
                             onPressed: _togglePlayPause,
                           ),
                           const SizedBox(width: 20),
-                          IconButton(
-                            iconSize: 42,
-                            icon: const Icon(Icons.forward_10, color: Colors.white),
-                            onPressed: () => _skipForward(10),
-                          ),
+                          IconButton(iconSize: 42, icon: const Icon(Icons.forward_10, color: Colors.white), onPressed: () => _skip(10)),
                         ],
                       ),
                     ),
 
-                    // SEEKBAR & REAL TIMERS
+                    // DRAGGABLE REAL-TIME SEEKBAR
                     Positioned(
                       bottom: 10, left: 10, right: 10,
                       child: SafeArea(
                         child: ValueListenableBuilder(
                           valueListenable: _controller!,
-                          builder: (context, VideoPlayerValue value, child) {
-                            final position = value.position;
-                            final duration = value.duration;
-                            
-                            // Safety check for dynamic duration length
-                            final maxDuration = duration.inMilliseconds > 0 ? duration.inMilliseconds.toDouble() : 1.0;
-                            final currentPos = position.inMilliseconds.toDouble().clamp(0.0, maxDuration);
-
+                          builder: (context, VideoPlayerValue val, child) {
+                            final max = val.duration.inMilliseconds > 0 ? val.duration.inMilliseconds.toDouble() : 1.0;
+                            final current = val.position.inMilliseconds.toDouble().clamp(0.0, max);
                             return Row(
                               children: [
-                                Text(_formatDuration(position), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                                Text(_formatTime(val.position), style: const TextStyle(color: Colors.white, fontSize: 12)),
                                 Expanded(
                                   child: SliderTheme(
                                     data: SliderThemeData(
-                                      thumbColor: const Color(0xFFE50914),
-                                      activeTrackColor: const Color(0xFFE50914),
-                                      inactiveTrackColor: Colors.white30,
-                                      trackHeight: 3.0,
-                                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
+                                      thumbColor: const Color(0xFFE50914), activeTrackColor: const Color(0xFFE50914), inactiveTrackColor: Colors.white30,
+                                      trackHeight: 3.0, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6.0),
                                     ),
                                     child: Slider(
-                                      min: 0.0,
-                                      max: maxDuration,
-                                      value: currentPos,
-                                      onChanged: (val) {
-                                        _controller!.seekTo(Duration(milliseconds: val.toInt()));
-                                      },
+                                      min: 0.0, max: max, value: current,
+                                      onChanged: (pos) => _controller!.seekTo(Duration(milliseconds: pos.toInt())),
                                     ),
                                   ),
                                 ),
-                                // REAL DURATION DISPLAYED HERE
-                                Text(_formatDuration(duration), style: const TextStyle(color: Colors.white, fontSize: 12)),
+                                Text(_formatTime(val.duration), style: const TextStyle(color: Colors.white, fontSize: 12)),
                                 IconButton(
                                   icon: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
                                   onPressed: _toggleFullscreen,
@@ -785,37 +673,25 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_isResolving) const CircularProgressIndicator(color: Color(0xFFE50914)),
-                  const SizedBox(height: 12),
-                  Text(_statusMessage ?? 'Preparing...', style: const TextStyle(color: Colors.white70)),
+                  const CircularProgressIndicator(color: Color(0xFFE50914)),
+                  const SizedBox(height: 16),
+                  Text(_statusMessage, style: const TextStyle(color: Colors.white70, fontSize: 12)),
                 ],
               ),
             ),
     );
 
-    if (_isFullscreen) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: playerUI,
-      );
-    }
+    // FULLSCREEN OVERRIDE
+    if (_isFullscreen) return Scaffold(backgroundColor: Colors.black, body: playerUI);
 
+    // PORTRAIT UI
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: Text(widget.media.title, style: const TextStyle(fontSize: 16)),
+        backgroundColor: Colors.black, title: Text(widget.movie.title, style: const TextStyle(fontSize: 16)),
         actions: [
           IconButton(
             icon: Icon(inWatchlist ? Icons.bookmark : Icons.bookmark_border, color: const Color(0xFFE50914)),
-            onPressed: () {
-              setState(() {
-                if (inWatchlist) {
-                  globalWatchlist.value = List.from(globalWatchlist.value)..remove(widget.media);
-                } else {
-                  globalWatchlist.value = List.from(globalWatchlist.value)..add(widget.media);
-                }
-              });
-            },
+            onPressed: () => setState(() => inWatchlist ? globalWatchlist.value = List.from(globalWatchlist.value)..remove(widget.movie) : globalWatchlist.value = List.from(globalWatchlist.value)..add(widget.movie)),
           ),
         ],
       ),
@@ -823,51 +699,19 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(aspectRatio: 16 / 9, child: playerUI),
-          
           Expanded(
-            child: DefaultTabController(
-              length: 2,
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const TabBar(
-                    indicatorColor: Color(0xFFE50914),
-                    tabs: [Tab(text: 'Episodes / Files'), Tab(text: 'Details')],
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        _episodes.isEmpty 
-                            ? const Center(child: Text('Loading episodes...'))
-                            : ListView.builder(
-                                itemCount: _episodes.length,
-                                itemBuilder: (ctx, i) {
-                                  final ep = _episodes[i];
-                                  final isPlaying = i == _currentEpisodeIndex;
-                                  return ListTile(
-                                    tileColor: isPlaying ? const Color(0xFFE50914).withOpacity(0.1) : null,
-                                    leading: Text('${i + 1}', style: const TextStyle(fontSize: 18, color: Colors.white54)),
-                                    title: Text(ep.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-                                    trailing: isPlaying ? const Icon(Icons.volume_up, color: Color(0xFFE50914)) : null,
-                                    onTap: () {
-                                      if (i != _currentEpisodeIndex) {
-                                        setState(() => _currentEpisodeIndex = i);
-                                        _initializePlayer();
-                                      }
-                                    },
-                                  );
-                                },
-                              ),
-                        
-                        SingleChildScrollView(
-                          padding: const EdgeInsets.all(16),
-                          child: Text(
-                            widget.media.description,
-                            style: const TextStyle(fontSize: 14, color: Colors.white70, height: 1.5),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  Text(widget.movie.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 6),
+                  Text('${widget.movie.releaseYear} • Rating: ★ ${widget.movie.rating}', style: const TextStyle(color: Color(0xFFE50914), fontWeight: FontWeight.bold)),
+                  const Divider(height: 24, color: Colors.white12),
+                  const Text('Overview', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  const SizedBox(height: 6),
+                  Text(widget.movie.description, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
                 ],
               ),
             ),
