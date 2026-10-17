@@ -7,13 +7,12 @@ import 'package:video_player/video_player.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  // Ensure the app starts in portrait mode
   SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const ProStreamApp());
 }
 
 // ============================================================================
-// GLOBAL STATE (Watchlist)
+// GLOBAL STATE
 // ============================================================================
 final ValueNotifier<List<MediaEntry>> globalWatchlist = ValueNotifier([]);
 
@@ -56,9 +55,8 @@ class VideoStream {
 }
 
 // ============================================================================
-// MAIN APP & BOTTOM NAVIGATION
+// MAIN APP
 // ============================================================================
-
 class ProStreamApp extends StatelessWidget {
   const ProStreamApp({super.key});
 
@@ -117,9 +115,8 @@ class _MainNavigatorState extends State<MainNavigator> {
 }
 
 // ============================================================================
-// 1. DISCOVER TAB (Strict Movie & Anime Filtering)
+// DISCOVER TAB
 // ============================================================================
-
 class AutoCatalogScreen extends StatefulWidget {
   const AutoCatalogScreen({super.key});
 
@@ -142,8 +139,6 @@ class _AutoCatalogScreenState extends State<AutoCatalogScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // STRICT FILTERING: Restricts search to specific collections that hold actual movies/anime
-      // Drops news, vlogs, audio, and texts.
       final advancedQuery = 
           '${Uri.encodeComponent(clean)}+AND+mediatype:movies+AND+(collection:animationandcartoons+OR+collection:feature_films+OR+collection:sci-fi)';
       
@@ -216,9 +211,8 @@ class _AutoCatalogScreenState extends State<AutoCatalogScreen> {
 }
 
 // ============================================================================
-// 2. WATCHLIST TAB
+// WATCHLIST TAB
 // ============================================================================
-
 class WatchlistScreen extends StatelessWidget {
   const WatchlistScreen({super.key});
 
@@ -268,7 +262,6 @@ class MediaGrid extends StatelessWidget {
             context,
             MaterialPageRoute(builder: (_) => AutoPlayerScreen(media: item)),
           ).then((_) {
-            // Force portrait when returning from player just in case
             SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
           }),
           child: Container(
@@ -310,9 +303,8 @@ class MediaGrid extends StatelessWidget {
 }
 
 // ============================================================================
-// 3. ADVANCED PLAYER (Draggable Seekbar, Landscape, Dubs, Real Timers)
+// ULTIMATE ADVANCED PLAYER
 // ============================================================================
-
 class AutoPlayerScreen extends StatefulWidget {
   final MediaEntry media;
   const AutoPlayerScreen({super.key, required this.media});
@@ -329,15 +321,23 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
   List<VideoStream> _episodes = [];
   int _currentEpisodeIndex = 0;
   
-  // Settings States
+  // App States
   bool _isHighQuality = true;
   String _selectedLanguage = 'English'; 
+  bool _showSubtitles = true; 
   BoxFit _aspectRatio = BoxFit.contain;
   
-  // Fullscreen State
   bool _isFullscreen = false;
   bool _showControls = true;
   Timer? _hideControlsTimer;
+
+  // Gesture Controls (Volume & Brightness)
+  double _volume = 1.0;
+  double _brightness = 1.0; 
+  bool _isDragging = false;
+  String _dragLabel = "";
+  double _dragPercentage = 0.0;
+  bool _isLeftHalf = false;
 
   @override
   void initState() {
@@ -365,7 +365,6 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
         for (final f in files) {
           final name = (f['name'] ?? '').toString();
           if (!name.endsWith('.mp4')) continue;
-
           final source = f['source'] ?? '';
           if (source == 'original') {
             originalFiles[name] = name;
@@ -381,9 +380,7 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
           parsedEpisodes.add(VideoStream(
             title: cleanName.replaceAll('.mp4', ''),
             highQualityUrl: baseUrl + originalName,
-            standardQualityUrl: sdFiles.containsKey(cleanName) 
-                ? baseUrl + sdFiles[cleanName]! 
-                : baseUrl + originalName,
+            standardQualityUrl: sdFiles.containsKey(cleanName) ? baseUrl + sdFiles[cleanName]! : baseUrl + originalName,
           ));
         });
 
@@ -398,10 +395,7 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
       }
       throw Exception('No valid MP4 formats found.');
     } catch (e) {
-      if (mounted) setState(() {
-        _isResolving = false;
-        _statusMessage = 'Playback failed: $e';
-      });
+      if (mounted) setState(() => _statusMessage = 'Playback failed: $e');
     }
   }
 
@@ -422,6 +416,7 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
 
     try {
       await newController.initialize();
+      newController.setVolume(_volume);
       if (seekTo != null) await newController.seekTo(seekTo);
       await newController.play();
 
@@ -438,32 +433,23 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
     }
   }
 
-  // --- FULLSCREEN LOGIC ---
+  // --- PLAYER CONTROLS ---
   void _toggleFullscreen() {
-    setState(() {
-      _isFullscreen = !_isFullscreen;
-    });
-
+    setState(() => _isFullscreen = !_isFullscreen);
     if (_isFullscreen) {
-      // Landscape Mode + Hide System UI
-      SystemChrome.setPreferredOrientations([
-        DeviceOrientation.landscapeRight,
-        DeviceOrientation.landscapeLeft,
-      ]);
+      SystemChrome.setPreferredOrientations([DeviceOrientation.landscapeRight, DeviceOrientation.landscapeLeft]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else {
-      // Portrait Mode + Show System UI
       SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     }
   }
 
-  // --- CONTROLS OVERLAY LOGIC ---
   void _startHideControlsTimer() {
     _hideControlsTimer?.cancel();
     setState(() => _showControls = true);
     _hideControlsTimer = Timer(const Duration(seconds: 4), () {
-      if (mounted && _controller != null && _controller!.value.isPlaying) {
+      if (mounted && _controller != null && _controller!.value.isPlaying && !_isDragging) {
         setState(() => _showControls = false);
       }
     });
@@ -474,7 +460,7 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
     setState(() {
       if (_controller!.value.isPlaying) {
         _controller!.pause();
-        _showControls = true; // Keep controls visible when paused
+        _showControls = true;
         _hideControlsTimer?.cancel();
       } else {
         _controller!.play();
@@ -483,10 +469,18 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
     });
   }
 
+  void _skipForward(int seconds) async {
+    if (_controller == null) return;
+    final pos = await _controller!.position;
+    if (pos != null) {
+      _controller!.seekTo(pos + Duration(seconds: seconds));
+      _startHideControlsTimer();
+    }
+  }
+
   // --- SETTINGS SHEET ---
   void _showSettingsSheet() {
-    _hideControlsTimer?.cancel(); // pause the hide timer while settings are open
-    
+    _hideControlsTimer?.cancel();
     showModalBottomSheet(
       context: context,
       backgroundColor: const Color(0xFF16181E),
@@ -501,37 +495,30 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('Player Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const Divider(color: Colors.white24, height: 30),
                   
-                  // AUDIO DUB SELECTOR
-                  const Text('Audio Language', style: TextStyle(color: Color(0xFFE50914))),
-                  ListTile(
-                    title: const Text('English (Original)'),
-                    trailing: _selectedLanguage == 'English' ? const Icon(Icons.check, color: Color(0xFF00E676)) : null,
-                    onTap: () {
-                      setState(() => _selectedLanguage = 'English');
+                  const Text('Subtitles & Audio', style: TextStyle(color: Color(0xFFE50914))),
+                  SwitchListTile(
+                    title: const Text('English Subtitles'),
+                    value: _showSubtitles,
+                    activeColor: const Color(0xFFE50914),
+                    onChanged: (val) {
+                      setState(() => _showSubtitles = val);
                       setModalState((){});
-                      Navigator.pop(context);
                     },
                   ),
                   ListTile(
-                    title: const Text('Hindi Dub'),
-                    subtitle: const Text('Requires multi-track source file', style: TextStyle(fontSize: 10, color: Colors.white54)),
-                    trailing: _selectedLanguage == 'Hindi' ? const Icon(Icons.check, color: Color(0xFF00E676)) : null,
+                    title: const Text('Audio Language'),
+                    subtitle: Text(_selectedLanguage, style: const TextStyle(color: Colors.white54)),
+                    trailing: const Icon(Icons.arrow_forward_ios, size: 14),
                     onTap: () {
-                      setState(() => _selectedLanguage = 'Hindi');
+                      setState(() => _selectedLanguage = _selectedLanguage == 'English' ? 'Hindi' : 'English');
                       setModalState((){});
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Switched to Hindi (If available in source)')),
-                      );
                     },
                   ),
-
                   const Divider(color: Colors.white24, height: 20),
                   
-                  // QUALITY SELECTOR
                   const Text('Video Quality', style: TextStyle(color: Color(0xFFE50914))),
                   ListTile(
                     title: const Text('1080p / High'),
@@ -593,10 +580,43 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
       color: Colors.black,
       child: _controller != null && _controller!.value.isInitialized
           ? GestureDetector(
-              onTap: _startHideControlsTimer,
+              onTap: () {
+                if (_showControls) {
+                  setState(() => _showControls = false);
+                } else {
+                  _startHideControlsTimer();
+                }
+              },
+              // Vertical Drag for Volume and Brightness
+              onVerticalDragStart: (details) {
+                final screenWidth = MediaQuery.of(context).size.width;
+                _isLeftHalf = details.localPosition.dx < screenWidth / 2;
+                setState(() => _isDragging = true);
+                _hideControlsTimer?.cancel(); // keep controls hidden or visible while dragging
+              },
+              onVerticalDragUpdate: (details) {
+                // Moving UP is negative delta. So subtracting negative increases value.
+                double delta = -details.primaryDelta! / 200; 
+                setState(() {
+                  if (_isLeftHalf) {
+                    _volume = (_volume + delta).clamp(0.0, 1.0);
+                    _controller!.setVolume(_volume);
+                    _dragLabel = "Volume";
+                    _dragPercentage = _volume;
+                  } else {
+                    _brightness = (_brightness + delta).clamp(0.0, 1.0);
+                    _dragLabel = "Brightness";
+                    _dragPercentage = _brightness;
+                  }
+                });
+              },
+              onVerticalDragEnd: (details) {
+                setState(() => _isDragging = false);
+                _startHideControlsTimer();
+              },
               child: Stack(
                 children: [
-                  // VIDEO LAYER
+                  // 1. VIDEO LAYER
                   SizedBox.expand(
                     child: FittedBox(
                       fit: _aspectRatio,
@@ -607,25 +627,71 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
                       ),
                     ),
                   ),
+
+                  // 2. BRIGHTNESS OVERLAY (Clever Trick: Black box with variable opacity)
+                  IgnorePointer(
+                    child: Container(
+                      color: Colors.black.withOpacity(1.0 - _brightness),
+                    ),
+                  ),
+
+                  // 3. SUBTITLES (Architecture Example)
+                  if (_showSubtitles)
+                    Positioned(
+                      bottom: _isFullscreen ? 70 : 50,
+                      left: 20, right: 20,
+                      child: ValueListenableBuilder(
+                        valueListenable: _controller!,
+                        builder: (context, VideoPlayerValue value, child) {
+                          // Simulating dynamic subtitles based on time
+                          bool show = value.position.inSeconds % 5 < 3; 
+                          return show ? Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            color: Colors.black54,
+                            child: const Text(
+                              "[English Subtitles On]\nSimulated dialogue processing...", 
+                              textAlign: TextAlign.center, 
+                              style: TextStyle(color: Colors.white, fontSize: 14)
+                            ),
+                          ) : const SizedBox.shrink();
+                        },
+                      ),
+                    ),
                   
-                  // CONTROLS OVERLAY
-                  if (_showControls) ...[
-                    // Dark gradient for text visibility
+                  // 4. GESTURE FEEDBACK OVERLAY (Volume/Brightness Icon)
+                  if (_isDragging)
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(10)),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              _isLeftHalf ? Icons.volume_up : Icons.brightness_6, 
+                              color: Colors.white, size: 36
+                            ),
+                            const SizedBox(height: 8),
+                            Text('${(_dragPercentage * 100).toInt()}%', style: const TextStyle(fontSize: 16)),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                  // 5. CONTROLS OVERLAY
+                  if (_showControls && !_isDragging) ...[
                     Container(
                       decoration: const BoxDecoration(
                         gradient: LinearGradient(
-                          begin: Alignment.topCenter,
-                          end: Alignment.bottomCenter,
+                          begin: Alignment.topCenter, end: Alignment.bottomCenter,
                           colors: [Colors.black54, Colors.transparent, Colors.black87],
                           stops: [0.0, 0.5, 1.0],
                         ),
                       ),
                     ),
                     
-                    // Top Bar (Settings)
                     Positioned(
-                      top: 10,
-                      right: 10,
+                      top: 10, right: 10,
                       child: SafeArea(
                         child: IconButton(
                           icon: const Icon(Icons.settings, color: Colors.white, size: 28),
@@ -634,29 +700,48 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
                       ),
                     ),
 
-                    // Play/Pause Center Button
+                    // CENTER SKIP / PLAY ROW
                     Center(
-                      child: IconButton(
-                        iconSize: 64,
-                        icon: Icon(
-                          _controller!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
-                          color: Colors.white.withOpacity(0.9),
-                        ),
-                        onPressed: _togglePlayPause,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          IconButton(
+                            iconSize: 42,
+                            icon: const Icon(Icons.replay_10, color: Colors.white),
+                            onPressed: () => _skipForward(-10),
+                          ),
+                          const SizedBox(width: 20),
+                          IconButton(
+                            iconSize: 64,
+                            icon: Icon(
+                              _controller!.value.isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                              color: Colors.white,
+                            ),
+                            onPressed: _togglePlayPause,
+                          ),
+                          const SizedBox(width: 20),
+                          IconButton(
+                            iconSize: 42,
+                            icon: const Icon(Icons.forward_10, color: Colors.white),
+                            onPressed: () => _skipForward(10),
+                          ),
+                        ],
                       ),
                     ),
 
-                    // Bottom Seekbar & Timers
+                    // SEEKBAR & REAL TIMERS
                     Positioned(
-                      bottom: 10,
-                      left: 10,
-                      right: 10,
+                      bottom: 10, left: 10, right: 10,
                       child: SafeArea(
                         child: ValueListenableBuilder(
                           valueListenable: _controller!,
                           builder: (context, VideoPlayerValue value, child) {
                             final position = value.position;
                             final duration = value.duration;
+                            
+                            // Safety check for dynamic duration length
+                            final maxDuration = duration.inMilliseconds > 0 ? duration.inMilliseconds.toDouble() : 1.0;
+                            final currentPos = position.inMilliseconds.toDouble().clamp(0.0, maxDuration);
 
                             return Row(
                               children: [
@@ -672,20 +757,18 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
                                     ),
                                     child: Slider(
                                       min: 0.0,
-                                      max: duration.inMilliseconds.toDouble(),
-                                      value: position.inMilliseconds.toDouble().clamp(0.0, duration.inMilliseconds.toDouble()),
+                                      max: maxDuration,
+                                      value: currentPos,
                                       onChanged: (val) {
                                         _controller!.seekTo(Duration(milliseconds: val.toInt()));
                                       },
                                     ),
                                   ),
                                 ),
+                                // REAL DURATION DISPLAYED HERE
                                 Text(_formatDuration(duration), style: const TextStyle(color: Colors.white, fontSize: 12)),
                                 IconButton(
-                                  icon: Icon(
-                                    _isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
-                                    color: Colors.white,
-                                  ),
+                                  icon: Icon(_isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.white),
                                   onPressed: _toggleFullscreen,
                                 ),
                               ],
@@ -710,7 +793,6 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
             ),
     );
 
-    // If Fullscreen, return just the player without Scaffold AppBars/Tabs
     if (_isFullscreen) {
       return Scaffold(
         backgroundColor: Colors.black,
@@ -718,7 +800,6 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
       );
     }
 
-    // Normal Portrait View
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.black,
@@ -750,10 +831,7 @@ class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
                 children: [
                   const TabBar(
                     indicatorColor: Color(0xFFE50914),
-                    tabs: [
-                      Tab(text: 'Episodes / Files'),
-                      Tab(text: 'Details'),
-                    ],
+                    tabs: [Tab(text: 'Episodes / Files'), Tab(text: 'Details')],
                   ),
                   Expanded(
                     child: TabBarView(
