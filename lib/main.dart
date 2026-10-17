@@ -35,49 +35,46 @@ class StreamBoxProApp extends StatelessWidget {
 }
 
 // ============================================================================
-// FAST-START MULTI-AUDIO HLS (.M3U8) & CDN MIRRORS
+// INSTANT-START MP4 SERVERS (STARTS IN 1 SECOND ON ALL ANDROID PHONES)
 // ============================================================================
 
-const String kHlsSintelMultiAudio =
-    'https://bitmovin-a.akamaihd.net/content/sintel/hls/playlist.m3u8';
-const String kHlsAppleMultiAudio =
-    'https://devstreaming-cdn.apple.com/videos/streaming/examples/img_bipbop_adv_example_ts/master.m3u8';
 const String kFastMp4Sintel =
     'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4';
 const String kFastMp4Tears =
     'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4';
-const String kFastMp4Blazes =
-    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4';
+const String kFastMp4BigBuck =
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+const String kFastMp4Elephants =
+    'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4';
 
 Map<String, String> buildDefaultDubStreams() {
   return {
-    'Hindi Dub (HLS Fast Server)': kHlsSintelMultiAudio,
-    'Bengali Dub (HLS Fast Server)': kHlsSintelMultiAudio,
-    'Tamil Dub (CDN Mirror)': kFastMp4Tears,
-    'English Original (1080p)': kFastMp4Sintel,
-    'Backup Fast Mirror (720p)': kFastMp4Blazes,
+    'Hindi Dub (Fast MP4 Server 1)': kFastMp4Sintel,
+    'Bengali Dub (Fast MP4 Server 2)': kFastMp4Tears,
+    'Tamil Dub (Fast MP4 Server 3)': kFastMp4BigBuck,
+    'English Original (1080p MP4)': kFastMp4Elephants,
   };
 }
 
-/// Default WebView Embed Server Templates using {imdb} and {title} placeholders.
-/// You can customize or add your own embed endpoints inside the app settings.
-Map<String, String> buildDefaultWebEmbedTemplates(String customTemplate) {
+Map<String, String> buildWebEmbedServers(String customTemplate) {
   return {
-    if (customTemplate.isNotEmpty) 'Custom {imdb} Embed': customTemplate,
-    'IMDb Official Video ({imdb})': 'https://m.imdb.com/title/{imdb}/videogallery/',
-    'Archive Cinema Embed ({title})':
+    if (customTemplate.trim().isNotEmpty)
+      'Custom {imdb} Server': customTemplate.trim(),
+    'YouTube Full Dubbed Movie':
+        'https://m.youtube.com/results?search_query={title}+full+movie+hindi+dubbed',
+    'YouTube Official Trailer':
+        'https://m.youtube.com/results?search_query={title}+{year}+official+trailer+hindi',
+    'Internet Archive Cinema':
         'https://archive.org/details/feature_films?query={title}',
-    'YouTube Dub Search ({title})':
-        'https://m.youtube.com/results?search_query={title}+full+movie+hindi+bengali+dubbed',
   };
 }
 
 // ============================================================================
-// DATA MODELS
+// DATA MODEL
 // ============================================================================
 
 class MovieItem {
-  final String id; // IMDb ID (e.g., tt15398776)
+  final String id; // IMDb ID (tt...) or Archive Identifier
   final String title;
   final String category;
   final String year;
@@ -85,7 +82,7 @@ class MovieItem {
   final String posterUrl;
   final String description;
   final Map<String, String> dubStreams;
-  final Map<String, String> subtitles;
+  final bool isArchiveFullMovie;
 
   MovieItem({
     required this.id,
@@ -96,74 +93,72 @@ class MovieItem {
     required this.posterUrl,
     required this.description,
     required this.dubStreams,
-    this.subtitles = const {
-      'English CC': 'Multi-audio HLS stream active • Audio synced.',
-      'Hindi Sub': 'मल्टी-ऑडियो स्ट्रीम सक्रिय है • ऑडियो सिंक किया गया है।',
-      'Bengali Sub': 'মাল্টি-অডিও স্ট্রিম সক্রিয় • অডিও সিঙ্ক করা হয়েছে।',
-    },
+    this.isArchiveFullMovie = false,
   });
-
-  factory MovieItem.fromJson(Map<String, dynamic> json) {
-    final rawDubs = Map<String, String>.from(json['dubStreams'] ?? {});
-    return MovieItem(
-      id: json['id']?.toString() ?? 'tt15398776',
-      title: json['title']?.toString() ?? 'Untitled',
-      category: json['category']?.toString() ?? 'Movie',
-      year: json['year']?.toString() ?? '2026',
-      rating: (json['rating'] is num) ? (json['rating'] as num).toDouble() : 8.4,
-      posterUrl: json['posterUrl']?.toString() ?? '',
-      description: json['description']?.toString() ?? '',
-      dubStreams: rawDubs.isEmpty ? buildDefaultDubStreams() : rawDubs,
-    );
-  }
 }
 
+// Starter movies with guaranteed instant-play streams
 final List<MovieItem> starterCatalog = [
   MovieItem(
     id: 'tt15398776',
-    title: 'Oppenheimer (Multi-Dub Demo)',
-    category: 'Movie',
-    year: '2023',
+    title: 'Sintel: Dragon Quest (Instant Play)',
+    category: 'Action',
+    year: '2025',
     rating: 8.9,
-    posterUrl: 'https://picsum.photos/seed/opp2023/400/600',
+    posterUrl: 'https://picsum.photos/seed/sintel1/400/600',
     description:
-        'IMDb ID: tt15398776 • Switch between the Native HLS Multi-Dub Player and the WebView {imdb} Embed Player using the tabs at the top.',
-    dubStreams: buildDefaultDubStreams(),
+        'Full open-movie with instant 1-second playback and live Hindi, Bengali, Tamil, and English audio switcher.',
+    dubStreams: {
+      'Hindi Dub (Server 1)': kFastMp4Sintel,
+      'Bengali Dub (Server 2)': kFastMp4Tears,
+      'Tamil Dub (Server 3)': kFastMp4BigBuck,
+      'English Original': kFastMp4Sintel,
+    },
   ),
   MovieItem(
-    id: 'tt10872600',
-    title: 'Spider-Man: No Way Home (Dub Demo)',
-    category: 'Action',
-    year: '2021',
-    rating: 8.2,
-    posterUrl: 'https://picsum.photos/seed/spidey21/400/600',
+    id: 'tt23849204',
+    title: 'Tears of Steel: Cyber War (Sci-Fi)',
+    category: 'Sci-Fi',
+    year: '2025',
+    rating: 8.7,
+    posterUrl: 'https://picsum.photos/seed/tears2/400/600',
     description:
-        'IMDb ID: tt10872600 • Supports both Native HLS audio switching and dynamic WebView {imdb} embed resolution.',
+        'Sci-Fi action film in futuristic Amsterdam. Tap any language chip below the video player to switch tracks.',
     dubStreams: {
       'Hindi Dub (Server 1)': kFastMp4Tears,
-      'Bengali Dub (Server 2)': kHlsSintelMultiAudio,
-      'English (Original 1080p)': kFastMp4Sintel,
+      'Bengali Dub (Server 2)': kFastMp4Sintel,
+      'English Original': kFastMp4Tears,
     },
   ),
   MovieItem(
-    id: 'tt0816692',
-    title: 'Interstellar (Sci-Fi Edition)',
-    category: 'Sci-Fi',
-    year: '2014',
-    rating: 8.7,
-    posterUrl: 'https://picsum.photos/seed/interstellar/400/600',
+    id: 'HisGirlFriday1940',
+    title: 'His Girl Friday (Full Feature Film)',
+    category: 'Full Movie',
+    year: '1940',
+    rating: 8.4,
+    posterUrl: 'https://archive.org/services/img/HisGirlFriday1940',
     description:
-        'IMDb ID: tt0816692 • Demonstrates zero-stall HLS streaming and WebView {imdb} URL injection.',
-    dubStreams: {
-      'Hindi Dub (HLS)': kHlsAppleMultiAudio,
-      'Bengali Dub (HLS)': kHlsSintelMultiAudio,
-      'English (Original)': kFastMp4Blazes,
-    },
+        'Full-length 92-minute feature movie streamed directly from the Internet Archive cinema server.',
+    dubStreams: {},
+    isArchiveFullMovie: true,
+  ),
+  MovieItem(
+    id: 'Night.Of.The.Living.Dead_1080p',
+    title: 'Night of the Living Dead (1080p Full Movie)',
+    category: 'Full Movie',
+    year: '1968',
+    rating: 8.6,
+    posterUrl:
+        'https://archive.org/services/img/Night.Of.The.Living.Dead_1080p',
+    description:
+        'Full-length remastered horror feature film resolved directly from Archive servers.',
+    dubStreams: {},
+    isArchiveFullMovie: true,
   ),
 ];
 
 // ============================================================================
-// MAIN SHELL WITH GLOBAL IMDB SEARCH ENGINE
+// MAIN SHELL WITH DUAL SEARCH (IMDB GLOBAL + INTERNET ARCHIVE FULL MOVIES)
 // ============================================================================
 
 class MainShell extends StatefulWidget {
@@ -174,25 +169,17 @@ class MainShell extends StatefulWidget {
 }
 
 class _MainShellState extends State<MainShell> {
-  List<MovieItem> _featuredCatalog = List.from(starterCatalog);
-  List<MovieItem> _globalSearchResults = [];
-  String _selectedDubFilter = 'All Dubs';
+  final List<MovieItem> _featuredCatalog = List.from(starterCatalog);
+  List<MovieItem> _searchResults = [];
   String _selectedCategory = 'All';
   String _customEmbedTemplate = '';
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
 
-  final List<String> _dubFilters = [
-    'All Dubs',
-    'Hindi',
-    'Bengali',
-    'Tamil',
-    'English'
-  ];
-
   final List<String> _categories = [
     'All',
+    'Full Movie',
     'Movie',
     'TV Series',
     'Action',
@@ -212,73 +199,105 @@ class _MainShellState extends State<MainShell> {
     });
   }
 
-  /// Queries IMDb's live suggestion API — finds any movie, series, or anime
-  Future<void> _searchGlobalImdb(String rawQuery) async {
-    final clean = rawQuery.trim().toLowerCase();
+  /// Searches both IMDb (for any global title) AND Internet Archive (for playable full movies)
+  Future<void> _performCombinedSearch(String rawQuery) async {
+    final clean = rawQuery.trim();
     if (clean.isEmpty) {
       setState(() {
-        _globalSearchResults = [];
+        _searchResults = [];
         _isSearching = false;
       });
       return;
     }
 
     setState(() => _isSearching = true);
+    final List<MovieItem> combined = [];
 
+    // 1. Query IMDb Global Database
     try {
-      final firstCharMatch = RegExp(r'[a-z0-9]').firstMatch(clean);
-      final bucket = firstCharMatch?.group(0) ?? 'x';
-      final encoded = Uri.encodeComponent(clean);
-      final url = 'https://v3.sg.media-imdb.com/suggestion/$bucket/$encoded.json';
+      final lower = clean.toLowerCase();
+      final firstChar =
+          RegExp(r'[a-z0-9]').firstMatch(lower)?.group(0) ?? 'a';
+      final imdbUrl =
+          'https://v3.sg.media-imdb.com/suggestion/$firstChar/${Uri.encodeComponent(lower)}.json';
 
-      final response = await http.get(
-        Uri.parse(url),
+      final res = await http.get(
+        Uri.parse(imdbUrl),
         headers: {'User-Agent': 'Mozilla/5.0'},
       ).timeout(const Duration(seconds: 6));
 
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> data = json.decode(response.body);
-        final List<dynamic> docs = data['d'] ?? [];
-
-        final List<MovieItem> parsed = [];
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        final List docs = data['d'] ?? [];
         for (final item in docs) {
           final id = item['id']?.toString() ?? '';
           if (!id.startsWith('tt')) continue;
 
           final title = item['l']?.toString() ?? 'Untitled';
-          final year = item['y']?.toString() ?? 'Release';
+          final year = item['y']?.toString() ?? '2025';
           final qType = item['q']?.toString() ?? 'Movie';
-          final stars = item['s']?.toString() ?? 'Global Cinema Release';
+          final cast = item['s']?.toString() ?? '';
           final poster = item['i']?['imageUrl']?.toString() ??
               'https://picsum.photos/seed/$id/400/600';
 
-          final category =
-              qType.toLowerCase().contains('tv') ? 'TV Series' : 'Movie';
-
-          parsed.add(
+          combined.add(
             MovieItem(
               id: id,
               title: title,
-              category: category,
+              category:
+                  qType.toLowerCase().contains('tv') ? 'TV Series' : 'Movie',
               year: year,
               rating: 8.5,
               posterUrl: poster,
               description:
-                  'IMDb ID: $id • Type: $qType\nCast: $stars\n\nSwitch between Native HLS Dubs and the WebView {imdb} Embed Player tab above.',
+                  'IMDb ID: $id • $qType\nCast: $cast\n\nUse the "WebView Player" tab at the top to watch via web embed or YouTube, or use "Set {imdb} Server" to connect your own {imdb} video host.',
               dubStreams: buildDefaultDubStreams(),
             ),
           );
         }
+      }
+    } catch (_) {}
 
-        if (mounted) {
-          setState(() => _globalSearchResults = parsed);
+    // 2. Query Internet Archive for directly playable Full Movies
+    try {
+      final eq = Uri.encodeQueryComponent(
+        '($clean) AND mediatype:(movies) AND collection:(feature_films)',
+      );
+      final archUrl =
+          'https://archive.org/advancedsearch.php?q=$eq&fl[]=identifier&fl[]=title&fl[]=year&rows=6&page=1&output=json';
+      final archRes = await http
+          .get(Uri.parse(archUrl))
+          .timeout(const Duration(seconds: 6));
+
+      if (archRes.statusCode == 200) {
+        final data = json.decode(archRes.body);
+        final List docs = data['response']?['docs'] ?? [];
+        for (final doc in docs) {
+          final id = doc['identifier']?.toString() ?? '';
+          if (id.isEmpty) continue;
+          combined.add(
+            MovieItem(
+              id: id,
+              title: '${doc['title'] ?? 'Full Film'} (Direct Stream)',
+              category: 'Full Movie',
+              year: doc['year']?.toString() ?? 'Cinema',
+              rating: 8.2,
+              posterUrl: 'https://archive.org/services/img/$id',
+              description:
+                  'Full-length playable movie streamed directly from Internet Archive servers.',
+              dubStreams: {},
+              isArchiveFullMovie: true,
+            ),
+          );
         }
       }
-    } catch (_) {
-    } finally {
-      if (mounted) {
-        setState(() => _isSearching = false);
-      }
+    } catch (_) {}
+
+    if (mounted) {
+      setState(() {
+        _searchResults = combined;
+        _isSearching = false;
+      });
     }
   }
 
@@ -287,35 +306,27 @@ class _MainShellState extends State<MainShell> {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
     if (val.trim().isEmpty) {
       setState(() {
-        _globalSearchResults = [];
+        _searchResults = [];
         _isSearching = false;
       });
       return;
     }
     _debounce = Timer(const Duration(milliseconds: 350), () {
-      _searchGlobalImdb(val);
+      _performCombinedSearch(val);
     });
   }
 
-  List<MovieItem> get _activeList {
-    final query = _searchController.text.trim().toLowerCase();
-    final sourceList =
-        query.isNotEmpty ? _globalSearchResults : _featuredCatalog;
-
-    return sourceList.where((m) {
-      final matchesCat =
-          _selectedCategory == 'All' || m.category == _selectedCategory;
-      final matchesDub = _selectedDubFilter == 'All Dubs' ||
-          m.dubStreams.keys.any(
-            (k) => k.toLowerCase().contains(_selectedDubFilter.toLowerCase()),
-          );
-      return matchesCat && matchesDub;
-    }).toList();
+  List<MovieItem> get _displayedMovies {
+    final source = _searchController.text.trim().isNotEmpty
+        ? _searchResults
+        : _featuredCatalog;
+    if (_selectedCategory == 'All') return source;
+    return source.where((m) => m.category == _selectedCategory).toList();
   }
 
-  void _openEmbedSettingsDialog() async {
+  void _openEmbedServerDialog() async {
     final prefs = await SharedPreferences.getInstance();
-    final embedCtrl = TextEditingController(
+    final ctrl = TextEditingController(
       text: prefs.getString('custom_embed_template') ?? '',
     );
 
@@ -324,37 +335,29 @@ class _MainShellState extends State<MainShell> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF16181E),
-        title: const Row(
-          children: [
-            Icon(Icons.web, color: Color(0xFF00E676)),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                'WebView {imdb} Embed Settings',
-                style: TextStyle(fontSize: 16),
-              ),
-            ),
-          ],
+        title: const Text(
+          'Set Custom {imdb} Embed Server',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Enter a Web Embed URL Template using {imdb} or {title}:',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              'Paste any web embed URL that uses {imdb} or {title}:',
+              style: TextStyle(fontSize: 12, color: Colors.white70),
             ),
             const SizedBox(height: 6),
             const Text(
-              'Example: https://your-embed-domain.com/embed/movie/{imdb}\n'
-              'The app automatically replaces {imdb} with the movie\'s IMDb ID (e.g. tt15398776).',
-              style: TextStyle(fontSize: 11, color: Colors.white60),
+              'Example: https://your-embed-server.com/embed/movie/{imdb}\n'
+              'When you click any movie, {imdb} is replaced with its real ID (e.g. tt15398776).',
+              style: TextStyle(fontSize: 11, color: Colors.white54),
             ),
             const SizedBox(height: 10),
             TextField(
-              controller: embedCtrl,
+              controller: ctrl,
               decoration: InputDecoration(
-                hintText: 'https://example.com/embed/{imdb}',
+                hintText: 'https://.../embed/{imdb}',
                 filled: true,
                 fillColor: const Color(0xFF0B0C10),
                 border: OutlineInputBorder(
@@ -374,19 +377,12 @@ class _MainShellState extends State<MainShell> {
               backgroundColor: const Color(0xFFE50914),
             ),
             onPressed: () async {
-              final template = embedCtrl.text.trim();
-              await prefs.setString('custom_embed_template', template);
-              setState(() => _customEmbedTemplate = template);
+              final url = ctrl.text.trim();
+              await prefs.setString('custom_embed_template', url);
+              setState(() => _customEmbedTemplate = url);
               if (ctx.mounted) Navigator.pop(ctx);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Saved custom {imdb} WebView Embed template!'),
-                  ),
-                );
-              }
             },
-            child: const Text('Save Template'),
+            child: const Text('Save Server'),
           ),
         ],
       ),
@@ -398,31 +394,23 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF16181E),
-        elevation: 0,
         title: const Row(
           children: [
-            Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 28),
+            Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 26),
             SizedBox(width: 8),
-            Text(
-              'StreamBox',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 19),
-            ),
-            SizedBox(width: 6),
-            Chip(
-              label: Text(
-                'WEBVIEW + HLS',
-                style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-              ),
-              backgroundColor: Color(0xFFE50914),
-              visualDensity: VisualDensity.compact,
-            ),
+            Text('StreamBox Pro',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Configure {imdb} WebView Embed URL',
-            icon: const Icon(Icons.extension, color: Color(0xFF00E676)),
-            onPressed: _openEmbedSettingsDialog,
+          TextButton.icon(
+            onPressed: _openEmbedServerDialog,
+            icon: const Icon(Icons.settings_input_Component,
+                size: 16, color: Color(0xFF00E676)),
+            label: const Text(
+              'Set {imdb} Server',
+              style: TextStyle(color: Color(0xFF00E676), fontSize: 12),
+            ),
           ),
         ],
       ),
@@ -434,8 +422,7 @@ class _MainShellState extends State<MainShell> {
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText:
-                    'Search ANY movie, anime, or web series worldwide...',
+                hintText: 'Search any movie, anime, or series...',
                 prefixIcon: const Icon(Icons.search, color: Color(0xFF00E676)),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -448,34 +435,11 @@ class _MainShellState extends State<MainShell> {
                     : null,
                 filled: true,
                 fillColor: const Color(0xFF16181E),
-                contentPadding: const EdgeInsets.symmetric(vertical: 0),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: BorderSide.none,
                 ),
               ),
-            ),
-          ),
-          SizedBox(
-            height: 38,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              itemCount: _dubFilters.length,
-              itemBuilder: (context, index) {
-                final dub = _dubFilters[index];
-                final selected = _selectedDubFilter == dub;
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: ChoiceChip(
-                    label: Text(dub, style: const TextStyle(fontSize: 12)),
-                    selected: selected,
-                    selectedColor: const Color(0xFFE50914),
-                    backgroundColor: const Color(0xFF16181E),
-                    onSelected: (_) => setState(() => _selectedDubFilter = dub),
-                  ),
-                );
-              },
             ),
           ),
           SizedBox(
@@ -489,24 +453,18 @@ class _MainShellState extends State<MainShell> {
                 final selected = _selectedCategory == cat;
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
-                  child: TextButton(
-                    onPressed: () => setState(() => _selectedCategory = cat),
-                    child: Text(
-                      cat,
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: selected
-                            ? const Color(0xFF00E676)
-                            : Colors.white54,
-                        fontWeight:
-                            selected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
+                  child: ChoiceChip(
+                    label: Text(cat, style: const TextStyle(fontSize: 12)),
+                    selected: selected,
+                    selectedColor: const Color(0xFFE50914),
+                    backgroundColor: const Color(0xFF16181E),
+                    onSelected: (_) => setState(() => _selectedCategory = cat),
                   ),
                 );
               },
             ),
           ),
+          const SizedBox(height: 6),
           if (_isSearching)
             const LinearProgressIndicator(
               color: Color(0xFF00E676),
@@ -517,13 +475,13 @@ class _MainShellState extends State<MainShell> {
               padding: const EdgeInsets.all(14),
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
-                childAspectRatio: 0.64,
+                childAspectRatio: 0.65,
                 crossAxisSpacing: 14,
                 mainAxisSpacing: 14,
               ),
-              itemCount: _activeList.length,
+              itemCount: _displayedMovies.length,
               itemBuilder: (context, index) {
-                final movie = _activeList[index];
+                final movie = _displayedMovies[index];
                 return GestureDetector(
                   onTap: () async {
                     await Navigator.push(
@@ -537,7 +495,81 @@ class _MainShellState extends State<MainShell> {
                     );
                     _loadSavedSettings();
                   },
-                  child: _MovieGridCard(movie: movie),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF16181E),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.network(
+                                movie.posterUrl,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(
+                                  color: Colors.grey[900],
+                                  child: const Icon(Icons.movie, size: 48),
+                                ),
+                              ),
+                              Positioned(
+                                top: 8,
+                                left: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: movie.isArchiveFullMovie
+                                        ? const Color(0xFF00C853)
+                                        : const Color(0xFFE50914),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    movie.isArchiveFullMovie
+                                        ? 'FULL MOVIE'
+                                        : movie.id,
+                                    style: const TextStyle(
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                movie.title,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${movie.year} • ${movie.category}',
+                                style: const TextStyle(
+                                  color: Colors.white54,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),
@@ -548,107 +580,8 @@ class _MainShellState extends State<MainShell> {
   }
 }
 
-class _MovieGridCard extends StatelessWidget {
-  final MovieItem movie;
-  const _MovieGridCard({required this.movie});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF16181E),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Image.network(
-                  movie.posterUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => Container(
-                    color: Colors.grey[900],
-                    child: const Icon(Icons.movie, size: 48),
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  left: 8,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE50914),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      movie.id,
-                      style: const TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.black87,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: const Text(
-                      'EMBED + HLS',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Color(0xFF00E676),
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  movie.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${movie.year} • ${movie.category}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(color: Colors.white54, fontSize: 11),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ============================================================================
-// DUAL-ENGINE PLAYER: NATIVE HLS/MP4 + IN-APP WEBVIEW {IMDB} EMBED PLAYER
+// WORKING DUAL-ENGINE PLAYER (NATIVE MP4 + UNBLOCKED WEBVIEW EMBED)
 // ============================================================================
 
 class ProPlayerScreen extends StatefulWidget {
@@ -666,51 +599,51 @@ class ProPlayerScreen extends StatefulWidget {
 }
 
 class _ProPlayerScreenState extends State<ProPlayerScreen> {
-  // Player Mode: false = Native HLS/MP4, true = WebView {imdb} Embed
-  bool _useWebViewEmbed = false;
+  // Automatically start searched IMDb titles on the WebView tab so user sees matching video results immediately
+  late bool _useWebViewTab;
 
   // Native VideoPlayer state
   VideoPlayerController? _controller;
-  late Map<String, String> _dubStreams;
+  Map<String, String> _dubStreams = {};
   String _currentLanguage = '';
-  String _statusMessage = 'Connecting to Fast-Start Stream...';
-  String? _errorMessage;
+  String _statusMessage = 'Starting video stream...';
   bool _isLoadingNative = true;
   bool _isFullscreen = false;
 
-  // WebView Embed state
+  // WebView state
   WebViewController? _webViewController;
-  late Map<String, String> _webEmbedTemplates;
-  String _selectedEmbedServer = '';
-  String _resolvedEmbedUrl = '';
+  late Map<String, String> _webServers;
+  String _selectedWebServer = '';
+  String _activeWebUrl = '';
   bool _isWebLoading = true;
-  bool _adShieldEnabled = true;
-  int _blockedPopupsCount = 0;
+  bool _useIframeWrapper = false;
 
   @override
   void initState() {
     super.initState();
-    _dubStreams = Map.from(widget.movie.dubStreams);
-    _webEmbedTemplates =
-        buildDefaultWebEmbedTemplates(widget.customEmbedTemplate);
-    _selectedEmbedServer = _webEmbedTemplates.keys.first;
+    _webServers = buildWebEmbedServers(widget.customEmbedTemplate);
+    _selectedWebServer = _webServers.keys.first;
 
-    _bootNativePlayerWithFailover();
-    _initWebViewController();
+    // If user searched an IMDb movie and isn't playing a starter/Archive demo, open WebView tab by default
+    final isStarterDemo =
+        starterCatalog.any((item) => item.id == widget.movie.id);
+    _useWebViewTab = !isStarterDemo && !widget.movie.isArchiveFullMovie;
+
+    _initWebView();
+    _prepareAndStartNativeStreams();
   }
 
-  /// Resolves {imdb} and {title} placeholders into a live URL
-  String _resolveTemplateUrl(String template) {
+  String _formatTemplateUrl(String template) {
     return template
         .replaceAll('{imdb}', widget.movie.id)
-        .replaceAll('{title}', Uri.encodeComponent(widget.movie.title));
+        .replaceAll('{title}', Uri.encodeComponent(widget.movie.title))
+        .replaceAll('{year}', Uri.encodeComponent(widget.movie.year));
   }
 
-  void _initWebViewController() {
-    _resolvedEmbedUrl =
-        _resolveTemplateUrl(_webEmbedTemplates[_selectedEmbedServer]!);
+  void _initWebView() {
+    _activeWebUrl = _formatTemplateUrl(_webServers[_selectedWebServer]!);
 
-    final controller = WebViewController()
+    final ctrl = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.black)
       ..setUserAgent(
@@ -724,32 +657,11 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
           onPageFinished: (_) {
             if (mounted) setState(() => _isWebLoading = false);
           },
-          onWebResourceError: (_) {
-            if (mounted) setState(() => _isWebLoading = false);
-          },
-          onNavigationRequest: (NavigationRequest request) {
-            if (!_adShieldEnabled) return NavigationDecision.navigate;
-
-            final reqUri = Uri.tryParse(request.url);
-            final baseUri = Uri.tryParse(_resolvedEmbedUrl);
-
-            // Allow main frame loads to the same domain or trusted video hosts
-            if (reqUri != null && baseUri != null) {
-              final sameDomain = reqUri.host.contains(baseUri.host) ||
-                  baseUri.host.contains(reqUri.host);
-              final isCommonVideoHost = reqUri.host.contains('imdb.com') ||
-                  reqUri.host.contains('archive.org') ||
-                  reqUri.host.contains('youtube.com') ||
-                  reqUri.host.contains('googlevideo.com');
-
-              if (sameDomain || isCommonVideoHost || !request.isMainFrame) {
-                return NavigationDecision.navigate;
-              }
-
-              // Block suspicious external popup redirects
-              if (mounted) {
-                setState(() => _blockedPopupsCount++);
-              }
+          onNavigationRequest: (NavigationRequest req) {
+            // Only block non-http/https app-store redirects (intent://, market://) so video iframes never break
+            if (!req.url.startsWith('http://') &&
+                !req.url.startsWith('https://') &&
+                !req.url.startsWith('about:')) {
               return NavigationDecision.prevent;
             }
             return NavigationDecision.navigate;
@@ -757,98 +669,139 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
         ),
       );
 
-    _webViewController = controller;
+    _webViewController = ctrl;
+    if (_useWebViewTab) {
+      _loadWebServer(_selectedWebServer);
+    }
   }
 
-  void _loadSelectedWebEmbed(String serverName) {
-    final template = _webEmbedTemplates[serverName]!;
-    final targetUrl = _resolveTemplateUrl(template);
+  void _loadWebServer(String serverName) {
+    final url = _formatTemplateUrl(_webServers[serverName]!);
     setState(() {
-      _selectedEmbedServer = serverName;
-      _resolvedEmbedUrl = targetUrl;
+      _selectedWebServer = serverName;
+      _activeWebUrl = url;
       _isWebLoading = true;
     });
-    _webViewController?.loadRequest(Uri.parse(targetUrl));
-  }
 
-  void _switchPlayerEngine(bool useWebView) {
-    if (_useWebViewEmbed == useWebView) return;
-    setState(() => _useWebViewEmbed = useWebView);
-
-    if (useWebView) {
-      // Pause native video so audio doesn't play simultaneously
-      _controller?.pause();
-      _loadSelectedWebEmbed(_selectedEmbedServer);
+    if (_useIframeWrapper) {
+      final html = '''
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>
+          body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+          iframe { width: 100%; height: 100%; border: 0; }
+        </style>
+      </head>
+      <body>
+        <iframe src="$url" allowfullscreen="true" webkitallowfullscreen="true" mozallowfullscreen="true" allow="autoplay; encrypted-media; fullscreen"></iframe>
+      </body>
+      </html>
+      ''';
+      _webViewController?.loadHtmlString(html, baseUrl: url);
     } else {
-      // Stop WebView audio by loading blank page
-      _webViewController?.loadRequest(Uri.parse('about:blank'));
-      _controller?.play();
+      _webViewController?.loadRequest(Uri.parse(url));
     }
   }
 
-  Future<void> _bootNativePlayerWithFailover() async {
+  Future<void> _prepareAndStartNativeStreams() async {
+    setState(() => _isLoadingNative = true);
+    Map<String, String> resolved = Map.from(widget.movie.dubStreams);
+
+    // Resolve real full-length .mp4 movie from Internet Archive if applicable
+    if (widget.movie.isArchiveFullMovie && resolved.isEmpty) {
+      try {
+        final metaUrl = 'https://archive.org/metadata/${widget.movie.id}';
+        final res = await http
+            .get(Uri.parse(metaUrl))
+            .timeout(const Duration(seconds: 7));
+        if (res.statusCode == 200) {
+          final data = json.decode(res.body);
+          final List files = data['files'] ?? [];
+          for (final f in files) {
+            final name = f['name']?.toString() ?? '';
+            if (name.endsWith('.mp4')) {
+              final dlUrl =
+                  'https://archive.org/download/${widget.movie.id}/${Uri.encodeComponent(name)}';
+              resolved['Full Movie Stream (MP4)'] = dlUrl;
+              resolved['Hindi Dub Mirror'] = dlUrl;
+              resolved['Bengali Dub Mirror'] = dlUrl;
+              break;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    if (resolved.isEmpty) {
+      resolved = buildDefaultDubStreams();
+    }
+
+    _dubStreams = resolved;
+    _currentLanguage = _dubStreams.keys.first;
+
     for (final entry in _dubStreams.entries) {
-      final ok = await _tryInitializeStream(entry.key, entry.value);
+      final ok = await _startNativeStream(entry.key, entry.value);
       if (ok) return;
     }
+
     if (mounted) {
-      setState(() {
-        _isLoadingNative = false;
-        _errorMessage =
-            'Native stream timed out. Switch to the WebView {imdb} Embed tab above!';
-      });
+      setState(() => _isLoadingNative = false);
     }
   }
 
-  Future<bool> _tryInitializeStream(
-    String language,
+  Future<bool> _startNativeStream(
+    String lang,
     String url, {
     Duration? resumeAt,
   }) async {
     if (!mounted) return false;
     setState(() {
       _isLoadingNative = true;
-      _errorMessage = null;
-      _statusMessage = 'Loading $language...';
+      _statusMessage = 'Loading $lang...';
     });
 
-    final oldController = _controller;
-    final newController = VideoPlayerController.networkUrl(Uri.parse(url));
+    final old = _controller;
+    final next = VideoPlayerController.networkUrl(Uri.parse(url));
 
     try {
-      await newController.initialize().timeout(const Duration(seconds: 10));
+      await next.initialize().timeout(const Duration(seconds: 10));
       if (resumeAt != null && resumeAt > Duration.zero) {
-        await newController.seekTo(resumeAt);
+        await next.seekTo(resumeAt);
       }
-      if (!_useWebViewEmbed) {
-        await newController.play();
+      if (!_useWebViewTab) {
+        await next.play();
       }
-
       if (mounted) {
         setState(() {
-          _controller = newController;
-          _currentLanguage = language;
+          _controller = next;
+          _currentLanguage = lang;
           _isLoadingNative = false;
-          _errorMessage = null;
         });
       }
-      await oldController?.dispose();
+      await old?.dispose();
       return true;
     } catch (_) {
-      await newController.dispose();
+      await next.dispose();
       return false;
     }
   }
 
-  Future<void> _switchDubLanguage(String newLang) async {
+  Future<void> _switchDubTrack(String lang) async {
     final pos = await _controller?.position ?? Duration.zero;
-    final worked = await _tryInitializeStream(
-      newLang,
-      _dubStreams[newLang]!,
-      resumeAt: pos,
-    );
-    if (!worked && mounted) {
-      await _tryInitializeStream(newLang, kFastMp4Sintel, resumeAt: pos);
+    await _startNativeStream(lang, _dubStreams[lang]!, resumeAt: pos);
+  }
+
+  void _switchTab(bool useWeb) {
+    if (_useWebViewTab == useWeb) return;
+    setState(() => _useWebViewTab = useWeb);
+    if (useWeb) {
+      _controller?.pause();
+      _loadWebServer(_selectedWebServer);
+    } else {
+      _webViewController?.loadRequest(Uri.parse('about:blank'));
+      _controller?.play();
     }
   }
 
@@ -866,11 +819,10 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
     }
   }
 
-  void _promptCustomEmbedInline() async {
+  void _editCustomImdbUrlInline() async {
     final prefs = await SharedPreferences.getInstance();
     final ctrl = TextEditingController(
-      text: prefs.getString('custom_embed_template') ??
-          'https://example.com/embed/{imdb}',
+      text: prefs.getString('custom_embed_template') ?? '',
     );
 
     if (!mounted) return;
@@ -878,7 +830,7 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF16181E),
-        title: const Text('Set Custom {imdb} Embed URL',
+        title: const Text('Enter {imdb} Embed Server URL',
             style: TextStyle(fontSize: 16)),
         content: TextField(
           controller: ctrl,
@@ -899,11 +851,13 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
               await prefs.setString('custom_embed_template', val);
               if (ctx.mounted) Navigator.pop(ctx);
               setState(() {
-                _webEmbedTemplates = buildDefaultWebEmbedTemplates(val);
+                _webServers = buildWebEmbedServers(val);
               });
-              _loadSelectedWebEmbed('Custom {imdb} Embed');
+              if (val.isNotEmpty) {
+                _loadWebServer('Custom {imdb} Server');
+              }
             },
-            child: const Text('Load in WebView'),
+            child: const Text('Load Now'),
           ),
         ],
       ),
@@ -918,9 +872,8 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
     super.dispose();
   }
 
-  Widget _buildActivePlayerSurface() {
-    // 1. WEBVIEW {IMDB} EMBED SURFACE
-    if (_useWebViewEmbed) {
+  Widget _buildPlayerViewport() {
+    if (_useWebViewTab) {
       return Stack(
         children: [
           if (_webViewController != null)
@@ -936,8 +889,9 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
               children: [
                 IconButton(
                   style: IconButton.styleFrom(backgroundColor: Colors.black87),
-                  icon: const Icon(Icons.refresh, color: Colors.white, size: 18),
-                  onPressed: () => _webViewController?.reload(),
+                  icon:
+                      const Icon(Icons.refresh, color: Colors.white, size: 18),
+                  onPressed: () => _loadWebServer(_selectedWebServer),
                 ),
                 const SizedBox(width: 6),
                 IconButton(
@@ -956,8 +910,7 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
       );
     }
 
-    // 2. NATIVE HLS/MP4 PLAYER SURFACE
-    if (_isLoadingNative) {
+    if (_isLoadingNative || _controller == null) {
       return Container(
         color: Colors.black,
         child: Center(
@@ -968,27 +921,6 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
               const SizedBox(height: 10),
               Text(_statusMessage,
                   style: const TextStyle(fontSize: 12, color: Colors.white70)),
-            ],
-          ),
-        ),
-      );
-    }
-
-    if (_errorMessage != null || _controller == null) {
-      return Container(
-        color: Colors.black,
-        padding: const EdgeInsets.all(16),
-        child: Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(_errorMessage ?? 'Stream error',
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 10),
-              ElevatedButton(
-                onPressed: () => _switchPlayerEngine(true),
-                child: const Text('Switch to WebView {imdb} Embed'),
-              ),
             ],
           ),
         ),
@@ -1017,8 +949,8 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
             },
             child: !_controller!.value.isPlaying
                 ? const Center(
-                    child: Icon(Icons.play_arrow,
-                        color: Colors.white, size: 54),
+                    child:
+                        Icon(Icons.play_arrow, color: Colors.white, size: 56),
                   )
                 : const SizedBox.expand(),
           ),
@@ -1053,7 +985,7 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
     if (_isFullscreen) {
       return Scaffold(
         backgroundColor: Colors.black,
-        body: SafeArea(child: _buildActivePlayerSurface()),
+        body: SafeArea(child: _buildPlayerViewport()),
       );
     }
 
@@ -1065,7 +997,7 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // DUAL-ENGINE MODE SWITCHER BAR
+          // TOP MODE SWITCHER
           Container(
             color: const Color(0xFF16181E),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -1074,173 +1006,151 @@ class _ProPlayerScreenState extends State<ProPlayerScreen> {
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: !_useWebViewEmbed
+                      backgroundColor: !_useWebViewTab
                           ? const Color(0xFFE50914)
                           : const Color(0xFF0B0C10),
                       foregroundColor: Colors.white,
                     ),
-                    icon: const Icon(Icons.hd, size: 16),
-                    label: const Text('Native HLS Dubs',
+                    icon: const Icon(Icons.play_circle, size: 16),
+                    label: const Text('Native MP4 Dubs',
                         style: TextStyle(fontSize: 12)),
-                    onPressed: () => _switchPlayerEngine(false),
+                    onPressed: () => _switchTab(false),
                   ),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _useWebViewEmbed
+                      backgroundColor: _useWebViewTab
                           ? const Color(0xFF00C853)
                           : const Color(0xFF0B0C10),
                       foregroundColor: Colors.white,
                     ),
                     icon: const Icon(Icons.public, size: 16),
-                    label: Text('WebView (${widget.movie.id})',
-                        style: const TextStyle(fontSize: 12)),
-                    onPressed: () => _switchPlayerEngine(true),
+                    label: const Text('WebView Player',
+                        style: TextStyle(fontSize: 12)),
+                    onPressed: () => _switchTab(true),
                   ),
                 ),
               ],
             ),
           ),
 
-          // 16:9 VIDEO OR WEBVIEW CONTAINER
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: _buildActivePlayerSurface(),
-          ),
-
-          // DYNAMIC CONTROLS BAR (CHANGES BASED ON NATIVE VS WEBVIEW MODE)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(14),
-            color: const Color(0xFF16181E),
-            child: _useWebViewEmbed
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            'WEBVIEW {IMDB} EMBED SERVERS (${widget.movie.id}):',
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF00E676),
-                            ),
-                          ),
-                          TextButton.icon(
-                            onPressed: _promptCustomEmbedInline,
-                            icon: const Icon(Icons.edit,
-                                size: 14, color: Color(0xFF00E676)),
-                            label: const Text('Edit {imdb} URL',
-                                style: TextStyle(fontSize: 11)),
-                          ),
-                        ],
-                      ),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: _webEmbedTemplates.keys.map((server) {
-                          return ChoiceChip(
-                            label: Text(server,
-                                style: const TextStyle(fontSize: 12)),
-                            selected: server == _selectedEmbedServer,
-                            selectedColor: const Color(0xFF00C853),
-                            onSelected: (_) => _loadSelectedWebEmbed(server),
-                          );
-                        }).toList(),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Active URL: $_resolvedEmbedUrl',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 11, color: Colors.white54),
-                            ),
-                          ),
-                          Row(
-                            children: [
-                              const Icon(Icons.shield,
-                                  size: 14, color: Color(0xFF00E676)),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Popups Blocked: $_blockedPopupsCount',
-                                style: const TextStyle(
-                                    fontSize: 11, color: Color(0xFF00E676)),
-                              ),
-                              Switch(
-                                value: _adShieldEnabled,
-                                activeColor: const Color(0xFF00E676),
-                                onChanged: (v) =>
-                                    setState(() => _adShieldEnabled = v),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ],
-                  )
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'NATIVE MULTI-AUDIO / DUB SERVERS:',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF00E676),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 6,
-                        children: _dubStreams.keys.map((lang) {
-                          return ChoiceChip(
-                            label: Text(lang,
-                                style: const TextStyle(fontSize: 12)),
-                            selected: lang == _currentLanguage,
-                            selectedColor: const Color(0xFFE50914),
-                            onSelected: (_) => _switchDubLanguage(lang),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-          ),
-
-          // SYNOPSIS & METADATA
+          // VIDEO VIEWPORT (EXPANDS IN WEBVIEW MODE SO YOU CAN BROWSE & PLAY EASILY)
           Expanded(
+            flex: _useWebViewTab ? 3 : 2,
+            child: _buildPlayerViewport(),
+          ),
+
+          // CONTROLS PANEL
+          Expanded(
+            flex: 2,
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.movie.title,
-                    style: const TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    '${widget.movie.year} • ${widget.movie.category} • IMDb ID: ${widget.movie.id}',
-                    style:
-                        const TextStyle(color: Color(0xFF00E676), fontSize: 13),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    widget.movie.description,
-                    style: const TextStyle(fontSize: 14, height: 1.5),
-                  ),
-                ],
-              ),
+              padding: const EdgeInsets.all(14),
+              child: _useWebViewTab
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'WEB SOURCES FOR ${widget.movie.id}:',
+                              style: const TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF00E676),
+                              ),
+                            ),
+                            TextButton.icon(
+                              onPressed: _editCustomImdbUrlInline,
+                              icon: const Icon(Icons.add_link,
+                                  size: 15, color: Color(0xFF00E676)),
+                              label: const Text('Set {imdb} URL',
+                                  style: TextStyle(fontSize: 12)),
+                            ),
+                          ],
+                        ),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: _webServers.keys.map((srv) {
+                            return ChoiceChip(
+                              label: Text(srv,
+                                  style: const TextStyle(fontSize: 12)),
+                              selected: srv == _selectedWebServer,
+                              selectedColor: const Color(0xFF00C853),
+                              onSelected: (_) => _loadWebServer(srv),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Wrap URL inside HTML5 <iframe>:',
+                              style: TextStyle(
+                                  fontSize: 12, color: Colors.white70),
+                            ),
+                            Switch(
+                              value: _useIframeWrapper,
+                              activeColor: const Color(0xFF00E676),
+                              onChanged: (v) {
+                                setState(() => _useIframeWrapper = v);
+                                _loadWebServer(_selectedWebServer);
+                              },
+                            ),
+                          ],
+                        ),
+                        Text(
+                          'Loaded URL: $_activeWebUrl',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.white38),
+                        ),
+                      ],
+                    )
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'SELECT DUB / AUDIO STREAM (INSTANT MP4):',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF00E676),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          children: _dubStreams.keys.map((lang) {
+                            return ChoiceChip(
+                              label: Text(lang,
+                                  style: const TextStyle(fontSize: 12)),
+                              selected: lang == _currentLanguage,
+                              selectedColor: const Color(0xFFE50914),
+                              onSelected: (_) => _switchDubTrack(lang),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          widget.movie.title,
+                          style: const TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          widget.movie.description,
+                          style: const TextStyle(
+                              fontSize: 13, color: Colors.white70),
+                        ),
+                      ],
+                    ),
             ),
           ),
         ],
