@@ -1,4 +1,4 @@
-name: streambox_pro
+name: streambox
 description: Modular multi-dub streaming architecture with WebView IMDb embed engine.
 publish_to: 'none'
 version: 2.1.0+1
