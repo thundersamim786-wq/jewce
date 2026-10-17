@@ -1,7 +1,7 @@
 name: streambox_pro
-description: Modular multi-dub streaming architecture with live API & HLS parser.
+description: Modular multi-dub streaming architecture with WebView IMDb embed engine.
 publish_to: 'none'
-version: 2.0.0+1
+version: 2.1.0+1
 
 environment:
   sdk: '>=3.2.0 <4.0.0'
@@ -12,6 +12,7 @@ dependencies:
   http: ^1.2.2
   video_player: ^2.9.2
   shared_preferences: ^2.3.2
+  webview_flutter: ^4.8.0
 
 flutter:
   uses-material-design: true
