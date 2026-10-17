@@ -1,4 +1,4 @@
-name: Build Flutter APK
+name: Build Streambox APK
 
 on:
   push:
