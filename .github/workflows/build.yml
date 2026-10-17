@@ -26,11 +26,11 @@ jobs:
           flutter-version: '3.24.0'
           channel: 'stable'
 
-      - name: Generate Missing Android Folder
-        run: flutter create --platforms=android .
-
-      - name: Inject Internet Permission
-        run: sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
+      - name: Configure Android for Video Player
+        run: |
+          flutter create --platforms=android .
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
+          sed -i 's/flutter.minSdkVersion/21/g' android/app/build.gradle
 
       - name: Install Dependencies
         run: flutter pub get
