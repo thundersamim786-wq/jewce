@@ -347,7 +347,7 @@ class _UltimatePlayerScreenState extends State<UltimatePlayerScreen> {
   Future<void> _extractAndPlay() async {
     final yt = YoutubeExplode();
     try {
-      // 1. Search YouTube for the video (Appending 'trailer' ensures we get a safe MP4 file to test playback)
+      // 1. Search YouTube for the video
       final query = '${widget.movie.title} official trailer';
       setState(() => _statusMessage = 'Searching streams for "$query"...');
       
@@ -358,7 +358,11 @@ class _UltimatePlayerScreenState extends State<UltimatePlayerScreen> {
       // 2. Extract the hidden MP4 Manifest
       setState(() => _statusMessage = 'Extracting secure stream manifest...');
       final manifest = await yt.videos.streamsClient.getManifest(videoId);
-      final streamInfo = manifest.muxed.withHighestVideoQuality();
+      
+      // FIX 1: Safe extraction of highest quality without relying on volatile package extensions
+      final streams = manifest.muxed.toList();
+      streams.sort((a, b) => a.size.totalBytes.compareTo(b.size.totalBytes));
+      final streamInfo = streams.last;
       
       // 3. Mount the raw MP4 into the Flutter Native Player
       setState(() => _statusMessage = 'Buffering high-speed stream...');
@@ -691,7 +695,16 @@ class _UltimatePlayerScreenState extends State<UltimatePlayerScreen> {
         actions: [
           IconButton(
             icon: Icon(inWatchlist ? Icons.bookmark : Icons.bookmark_border, color: const Color(0xFFE50914)),
-            onPressed: () => setState(() => inWatchlist ? globalWatchlist.value = List.from(globalWatchlist.value)..remove(widget.movie) : globalWatchlist.value = List.from(globalWatchlist.value)..add(widget.movie)),
+            // FIX 2: Replaced the strict ternary syntax error with proper block structure
+            onPressed: () {
+              setState(() {
+                if (inWatchlist) {
+                  globalWatchlist.value = List.from(globalWatchlist.value)..remove(widget.movie);
+                } else {
+                  globalWatchlist.value = List.from(globalWatchlist.value)..add(widget.movie);
+                }
+              });
+            },
           ),
         ],
       ),
