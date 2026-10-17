@@ -9,9 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  cupertino_icons: ^1.0.8
   http: ^1.2.0
   video_player: ^2.8.2
   youtube_explode_dart: ^2.2.2
+
 
 flutter:
   uses-material-design: true
