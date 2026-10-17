@@ -1,351 +1,149 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const StreamBoxNativeApp());
+  runApp(const AutoStreamApp());
 }
 
-class StreamBoxNativeApp extends StatelessWidget {
-  const StreamBoxNativeApp({super.key});
+class AutoStreamApp extends StatelessWidget {
+  const AutoStreamApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'StreamBox Native',
+      title: 'Auto Stream Native',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF0B0C10),
         primaryColor: const Color(0xFFE50914),
         colorScheme: const ColorScheme.dark(
           primary: Color(0xFFE50914),
-          secondary: Color(0xFF00E676),
           surface: Color(0xFF16181E),
         ),
       ),
-      home: const HomeScreen(),
+      home: const AutoCatalogScreen(),
     );
   }
 }
 
-// ============================================================================
-// GUARANTEED FAST CDN MP4 STREAMS (TESTED GLOBALLY ON ALL ISPS)
-// ============================================================================
-
-const Map<String, String> kDirectSampleStreams = {
-  'Sintel Cyber Quest':
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-  'Tears of Steel':
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-  'Big Buck Bunny':
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  'Elephants Dream':
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-  'For Bigger Blazes':
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-  'For Bigger Escapes':
-      'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
-};
-
-class MovieItem {
-  final String id;
+class MediaEntry {
+  final String identifier;
   final String title;
-  final String category;
   final String year;
-  final String posterUrl;
   final String description;
-  final Map<String, String> dubStreams;
+  final String posterUrl;
 
-  MovieItem({
-    required this.id,
+  MediaEntry({
+    required this.identifier,
     required this.title,
-    required this.category,
     required this.year,
-    required this.posterUrl,
     required this.description,
-    required this.dubStreams,
+    required this.posterUrl,
   });
 }
 
-// Starter library of directly playable movies
-final List<MovieItem> initialLibrary = [
-  MovieItem(
-    id: 'sintel_full',
-    title: 'Sintel: Dragon Quest',
-    category: 'Action',
-    year: '2024',
-    posterUrl: 'https://picsum.photos/seed/sintel404/400/600',
-    description:
-        'A warrior searches across frozen ridges to save her companion. Starts immediately in the native player.',
-    dubStreams: {
-      'Hindi Dub (Server 1)': kDirectSampleStreams['Sintel Cyber Quest']!,
-      'Bengali Dub (Server 2)': kDirectSampleStreams['Tears of Steel']!,
-      'Tamil Dub (Server 3)': kDirectSampleStreams['Big Buck Bunny']!,
-      'English (Original 1080p)': kDirectSampleStreams['Sintel Cyber Quest']!,
-    },
-  ),
-  MovieItem(
-    id: 'tears_full',
-    title: 'Tears of Steel',
-    category: 'Sci-Fi',
-    year: '2025',
-    posterUrl: 'https://picsum.photos/seed/tears505/400/600',
-    description:
-        'Futuristic battle in Amsterdam between autonomous biomechs and humans.',
-    dubStreams: {
-      'Hindi Dub (Server 1)': kDirectSampleStreams['Tears of Steel']!,
-      'Bengali Dub (Server 2)': kDirectSampleStreams['Sintel Cyber Quest']!,
-      'English (Original 1080p)': kDirectSampleStreams['Tears of Steel']!,
-    },
-  ),
-  MovieItem(
-    id: 'bunny_anim',
-    title: 'Big Buck Adventures',
-    category: 'Animation',
-    year: '2025',
-    posterUrl: 'https://picsum.photos/seed/bunny606/400/600',
-    description:
-        'A giant forest rabbit takes a stand against woodland troublemakers.',
-    dubStreams: {
-      'Hindi Dub (Server 1)': kDirectSampleStreams['Big Buck Bunny']!,
-      'Bengali Dub (Server 2)': kDirectSampleStreams['Elephants Dream']!,
-      'English Original': kDirectSampleStreams['Big Buck Bunny']!,
-    },
-  ),
-  MovieItem(
-    id: 'elephants_full',
-    title: 'Elephants Dream: Infinite Machine',
-    category: 'Sci-Fi',
-    year: '2024',
-    posterUrl: 'https://picsum.photos/seed/elephants707/400/600',
-    description:
-        'Two men discover the secrets of a massive, self-evolving clockwork world.',
-    dubStreams: {
-      'Hindi Dub (Server 1)': kDirectSampleStreams['Elephants Dream']!,
-      'Bengali Dub (Server 2)': kDirectSampleStreams['For Bigger Blazes']!,
-      'English Original': kDirectSampleStreams['Elephants Dream']!,
-    },
-  ),
-];
-
 // ============================================================================
-// HOME CATALOG & SEARCH VIEW
+// AUTOMATED SEARCH & MEDIA RESOLVER
 // ============================================================================
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+class AutoCatalogScreen extends StatefulWidget {
+  const AutoCatalogScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<AutoCatalogScreen> createState() => _AutoCatalogScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
-  final List<MovieItem> _library = List.from(initialLibrary);
-  List<MovieItem> _searchResults = [];
-  bool _isSearching = false;
+class _AutoCatalogScreenState extends State<AutoCatalogScreen> {
   final TextEditingController _searchCtrl = TextEditingController();
+  List<MediaEntry> _results = [];
+  bool _isLoading = false;
   Timer? _debounce;
 
-  Future<void> _searchMovies(String query) async {
-    final clean = query.trim().toLowerCase();
+  // Automated search across millions of open video archives
+  Future<void> _executeAutoSearch(String query) async {
+    final clean = query.trim();
     if (clean.isEmpty) {
-      setState(() {
-        _searchResults = [];
-        _isSearching = false;
-      });
+      setState(() => _results = []);
       return;
     }
 
-    setState(() => _isSearching = true);
+    setState(() => _isLoading = true);
 
-    final List<MovieItem> found = [];
+    try {
+      // 1. Query the open archive catalog for video media matching the title
+      final uri = Uri.parse(
+        'https://archive.org/advancedsearch.php?q=${Uri.encodeComponent(clean)}+AND+mediatype:movies&fl[]=identifier,title,description,year&rows=20&output=json',
+      );
 
-    // 1. Filter local guaranteed-playback titles
-    for (final item in _library) {
-      if (item.title.toLowerCase().contains(clean) ||
-          item.category.toLowerCase().contains(clean)) {
-        found.add(item);
+      final response = await http.get(uri).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List docs = data['response']['docs'] ?? [];
+
+        final List<MediaEntry> parsed = docs.map((doc) {
+          final id = doc['identifier']?.toString() ?? '';
+          return MediaEntry(
+            identifier: id,
+            title: doc['title']?.toString() ?? 'Untitled Video',
+            year: doc['year']?.toString() ?? 'Archive',
+            description: doc['description']?.toString() ?? 'Public domain media stream.',
+            // High-resolution automated thumbnail directly from Archive CDN
+            posterUrl: 'https://archive.org/services/img/$id',
+          );
+        }).toList();
+
+        if (mounted) {
+          setState(() {
+            _results = parsed;
+            _isLoading = false;
+          });
+        }
+        return;
       }
+    } catch (e) {
+      debugPrint('Search error: $e');
     }
 
-    // 2. Fetch playable media with fallback stream mapping
-    try {
-      final res = await http.get(
-        Uri.parse(
-          'https://itunes.apple.com/search?term=${Uri.encodeComponent(clean)}&media=movie&limit=15',
-        ),
-        headers: {'User-Agent': 'Mozilla/5.0 (Android; Mobile)'},
-      ).timeout(const Duration(seconds: 4));
-
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        final List docs = data['results'] ?? [];
-        int streamIndex = 0;
-        final fallbackKeys = kDirectSampleStreams.keys.toList();
-
-        for (final doc in docs) {
-          final title = doc['trackName']?.toString() ?? 'Untitled Movie';
-          final genre = doc['primaryGenreName']?.toString() ?? 'Cinema';
-          final date = doc['releaseDate']?.toString() ?? '2025';
-          final year = date.length >= 4 ? date.substring(0, 4) : '2025';
-          final poster = doc['artworkUrl100']?.toString().replaceAll(
-                    '100x100bb',
-                    '600x900bb',
-                  ) ??
-              'https://picsum.photos/seed/${doc['trackId']}/400/600';
-
-          // Assign reliable progressive MP4 stream targets
-          final assignedStream =
-              kDirectSampleStreams[fallbackKeys[streamIndex % fallbackKeys.length]]!;
-          streamIndex++;
-
-          found.add(
-            MovieItem(
-              id: 'movie_${doc['trackId'] ?? DateTime.now().millisecondsSinceEpoch}',
-              title: title,
-              category: genre,
-              year: year,
-              posterUrl: poster,
-              description:
-                  doc['longDescription']?.toString() ?? 'High-definition native playback stream.',
-              dubStreams: {
-                'Hindi Dub (Server 1)': assignedStream,
-                'Bengali Dub (Server 2)': kDirectSampleStreams['Tears of Steel']!,
-                'English Original (1080p)': assignedStream,
-              },
-            ),
-          );
-        }
-      }
-    } catch (_) {}
-
     if (mounted) {
-      setState(() {
-        _searchResults = found;
-        _isSearching = false;
-      });
+      setState(() => _isLoading = false);
     }
   }
 
   void _onSearchChanged(String val) {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    if (val.trim().isEmpty) {
-      setState(() => _searchResults = []);
-      return;
-    }
-    _debounce = Timer(const Duration(milliseconds: 350), () {
-      _searchMovies(val);
+    _debounce = Timer(const Duration(milliseconds: 600), () {
+      _executeAutoSearch(val);
     });
-  }
-
-  void _openDirectUrlDialog() {
-    final titleCtrl = TextEditingController(text: 'Custom Stream');
-    final urlCtrl = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF16181E),
-        title: const Text('Play Custom Video URL', style: TextStyle(fontSize: 16)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: titleCtrl,
-              decoration: const InputDecoration(labelText: 'Movie Title'),
-            ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: urlCtrl,
-              decoration: const InputDecoration(
-                hintText: 'https://.../video.mp4 or .m3u8',
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFE50914)),
-            onPressed: () {
-              final link = urlCtrl.text.trim();
-              if (link.isEmpty) return;
-              Navigator.pop(ctx);
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => NativePlayerScreen(
-                    movie: MovieItem(
-                      id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-                      title: titleCtrl.text.trim(),
-                      category: 'Custom',
-                      year: '2026',
-                      posterUrl: 'https://picsum.photos/seed/custom/400/600',
-                      description: 'Custom native stream: $link',
-                      dubStreams: {
-                        'Direct Stream': link,
-                        'Hindi Dub Slot': link,
-                      },
-                    ),
-                  ),
-                ),
-              );
-            },
-            child: const Text('Play Now'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final displayed =
-        _searchCtrl.text.trim().isNotEmpty ? _searchResults : _library;
-
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF16181E),
-        title: const Row(
-          children: [
-            Icon(Icons.play_circle_fill, color: Color(0xFFE50914), size: 26),
-            SizedBox(width: 8),
-            Text('StreamBox Native',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        actions: [
-          TextButton.icon(
-            onPressed: _openDirectUrlDialog,
-            icon: const Icon(Icons.link, color: Color(0xFF00E676), size: 18),
-            label: const Text('Play URL',
-                style: TextStyle(color: Color(0xFF00E676), fontSize: 13)),
-          ),
-        ],
+        title: const Text('Auto Stream Engine', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 8),
+            padding: const EdgeInsets.all(12),
             child: TextField(
               controller: _searchCtrl,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Search movie title...',
+                hintText: 'Search any title (e.g. Superman, Night of the Living Dead)...',
                 prefixIcon: const Icon(Icons.search, color: Color(0xFF00E676)),
                 suffixIcon: _searchCtrl.text.isNotEmpty
                     ? IconButton(
-                        icon: const Icon(Icons.clear, size: 18),
+                        icon: const Icon(Icons.clear),
                         onPressed: () {
                           _searchCtrl.clear();
-                          _onSearchChanged('');
+                          setState(() => _results = []);
                         },
                       )
                     : null,
@@ -358,29 +156,30 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
           ),
-          if (_isSearching)
-            const LinearProgressIndicator(color: Color(0xFF00E676), minHeight: 2),
+          if (_isLoading) const LinearProgressIndicator(color: Color(0xFF00E676), minHeight: 2),
           Expanded(
-            child: displayed.isEmpty && !_isSearching
-                ? const Center(child: Text('No results found.'))
+            child: _results.isEmpty && !_isLoading
+                ? const Center(
+                    child: Text('Type a title to automatically discover and play videos.',
+                        style: TextStyle(color: Colors.white54)),
+                  )
                 : GridView.builder(
                     padding: const EdgeInsets.all(12),
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                       crossAxisCount: 2,
                       childAspectRatio: 0.65,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
                     ),
-                    itemCount: displayed.length,
+                    itemCount: _results.length,
                     itemBuilder: (context, idx) {
-                      final item = displayed[idx];
+                      final item = _results[idx];
                       return GestureDetector(
                         onTap: () {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => NativePlayerScreen(movie: item),
+                              builder: (_) => AutoPlayerScreen(media: item),
                             ),
                           );
                         },
@@ -399,7 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   fit: BoxFit.cover,
                                   width: double.infinity,
                                   errorBuilder: (_, __, ___) => Container(
-                                    color: Colors.grey[900],
+                                    color: Colors.black26,
                                     child: const Icon(Icons.movie, size: 40),
                                   ),
                                 ),
@@ -413,15 +212,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                       item.title,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 13),
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                                     ),
                                     const SizedBox(height: 3),
                                     Text(
-                                      '${item.year} • ${item.category}',
-                                      style: const TextStyle(
-                                          color: Colors.white54, fontSize: 11),
+                                      item.year,
+                                      style: const TextStyle(color: Colors.white54, fontSize: 11),
                                     ),
                                   ],
                                 ),
@@ -440,75 +236,90 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ============================================================================
-// STABLE NATIVE VIDEO PLAYER
+// AUTOMATIC STREAM RESOLVER & NATIVE PLAYER
 // ============================================================================
 
-class NativePlayerScreen extends StatefulWidget {
-  final MovieItem movie;
-  const NativePlayerScreen({super.key, required this.movie});
+class AutoPlayerScreen extends StatefulWidget {
+  final MediaEntry media;
+  const AutoPlayerScreen({super.key, required this.media});
 
   @override
-  State<NativePlayerScreen> createState() => _NativePlayerScreenState();
+  State<AutoPlayerScreen> createState() => _AutoPlayerScreenState();
 }
 
-class _NativePlayerScreenState extends State<NativePlayerScreen> {
+class _AutoPlayerScreenState extends State<AutoPlayerScreen> {
   VideoPlayerController? _controller;
-  late String _currentTrack;
-  bool _isInit = false;
-  String? _error;
+  bool _isResolving = true;
+  String? _statusMessage;
+  String? _directStreamUrl;
 
   @override
   void initState() {
     super.initState();
-    _currentTrack = widget.movie.dubStreams.keys.first;
-    _setupPlayer(widget.movie.dubStreams[_currentTrack]!);
+    _resolveAndPlay();
   }
 
-  Future<void> _setupPlayer(String url, {Duration? seekTo}) async {
+  // Automatically fetches file structure and resolves the direct video stream URL
+  Future<void> _resolveAndPlay() async {
     setState(() {
-      _isInit = false;
-      _error = null;
+      _isResolving = true;
+      _statusMessage = 'Locating playable video file...';
     });
 
-    final previous = _controller;
-    final next = VideoPlayerController.networkUrl(
-      Uri.parse(url),
-      httpHeaders: {
-        'User-Agent':
-            'Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/126.0.0.0',
-      },
-    );
-
     try {
-      await next.initialize().timeout(const Duration(seconds: 12));
-      if (seekTo != null && seekTo > Duration.zero) {
-        await next.seekTo(seekTo);
-      }
-      await next.play();
+      // 1. Fetch metadata container to discover the raw MP4 file
+      final metaUri = Uri.parse('https://archive.org/metadata/${widget.media.identifier}');
+      final response = await http.get(metaUri).timeout(const Duration(seconds: 10));
 
-      if (mounted) {
-        setState(() {
-          _controller = next;
-          _isInit = true;
-        });
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final List files = data['files'] ?? [];
+
+        // 2. Automatically find the best progressive .mp4 stream
+        String? targetFile;
+        for (final f in files) {
+          final name = (f['name'] ?? '').toString();
+          final format = (f['format'] ?? '').toString().toLowerCase();
+
+          if (name.endsWith('.mp4') || format.contains('mp4') || format.contains('h.264')) {
+            targetFile = name;
+            break;
+          }
+        }
+
+        if (targetFile != null) {
+          // 3. Construct direct streaming URL
+          final streamUrl = 'https://archive.org/download/${widget.media.identifier}/$targetFile';
+          setState(() {
+            _directStreamUrl = streamUrl;
+            _statusMessage = 'Buffering native player...';
+          });
+
+          // 4. Mount video player
+          _controller = VideoPlayerController.networkUrl(
+            Uri.parse(streamUrl),
+            httpHeaders: {'User-Agent': 'Mozilla/5.0 (Android; Mobile)'},
+          );
+
+          await _controller!.initialize();
+          await _controller!.play();
+
+          if (mounted) {
+            setState(() => _isResolving = false);
+          }
+          return;
+        }
       }
-      await previous?.dispose();
+
+      throw Exception('No playable MP4 found in this archive entry.');
     } catch (e) {
-      await next.dispose();
       if (mounted) {
         setState(() {
-          _isInit = false;
-          _error = 'Failed to load video stream. Tap to retry.';
+          _isResolving = false;
+          _statusMessage = 'Playback failed: $e';
         });
       }
     }
-  }
-
-  void _switchDub(String track) async {
-    if (track == _currentTrack && _isInit) return;
-    final pos = await _controller?.position ?? Duration.zero;
-    setState(() => _currentTrack = track);
-    await _setupPlayer(widget.movie.dubStreams[track]!, seekTo: pos);
   }
 
   @override
@@ -522,7 +333,7 @@ class _NativePlayerScreenState extends State<NativePlayerScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: const Color(0xFF16181E),
-        title: Text(widget.movie.title, style: const TextStyle(fontSize: 16)),
+        title: Text(widget.media.title, style: const TextStyle(fontSize: 16)),
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,7 +342,7 @@ class _NativePlayerScreenState extends State<NativePlayerScreen> {
             aspectRatio: 16 / 9,
             child: Container(
               color: Colors.black,
-              child: _isInit && _controller != null
+              child: _controller != null && _controller!.value.isInitialized
                   ? Stack(
                       alignment: Alignment.bottomCenter,
                       children: [
@@ -552,8 +363,7 @@ class _NativePlayerScreenState extends State<NativePlayerScreen> {
                           },
                           child: !_controller!.value.isPlaying
                               ? const Center(
-                                  child: Icon(Icons.play_arrow,
-                                      color: Colors.white, size: 54),
+                                  child: Icon(Icons.play_arrow, color: Colors.white, size: 54),
                                 )
                               : const SizedBox.expand(),
                         ),
@@ -569,66 +379,45 @@ class _NativePlayerScreenState extends State<NativePlayerScreen> {
                       ],
                     )
                   : Center(
-                      child: _error != null
-                          ? Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(_error!,
-                                    style: const TextStyle(
-                                        color: Colors.white70, fontSize: 13)),
-                                const SizedBox(height: 10),
-                                ElevatedButton(
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFE50914),
-                                  ),
-                                  onPressed: () => _setupPlayer(
-                                    widget.movie.dubStreams[_currentTrack]!,
-                                  ),
-                                  child: const Text('Retry'),
-                                ),
-                              ],
-                            )
-                          : const CircularProgressIndicator(
-                              color: Color(0xFFE50914),
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (_isResolving)
+                              const CircularProgressIndicator(color: Color(0xFFE50914)),
+                            const SizedBox(height: 12),
+                            Text(
+                              _statusMessage ?? 'Preparing video...',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: Colors.white70, fontSize: 13),
                             ),
+                          ],
+                        ),
+                      ),
                     ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'SELECT AUDIO / DUB STREAM:',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF00E676),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  children: widget.movie.dubStreams.keys.map((track) {
-                    return ChoiceChip(
-                      label: Text(track, style: const TextStyle(fontSize: 12)),
-                      selected: track == _currentTrack,
-                      selectedColor: const Color(0xFFE50914),
-                      onSelected: (_) => _switchDub(track),
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  widget.movie.title,
-                  style: const TextStyle(
-                      fontSize: 18, fontWeight: FontWeight.bold),
-                ),
+                Text(widget.media.title,
+                    style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 Text(
-                  widget.movie.description,
+                  'Resolved URL: ${_directStreamUrl ?? "Analyzing..."}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF00E676)),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.media.description,
                   style: const TextStyle(fontSize: 13, color: Colors.white70),
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
